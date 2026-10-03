@@ -19,4 +19,4 @@ jobs:
         env:
           TT_API_KEY: ${{ secrets.TT_API_KEY }}
           TT_API_SECRET: ${{ secrets.TT_API_SECRET }}
-        run: python debug_user.py
+        run: python debug_wallets.py
