@@ -1,5 +1,5 @@
 """
-RiskGuard — تست آدرس‌های بدون پیشوند futures برای یافتن موجودی
+RiskGuard — تست دریافت موجودی کل از مسیر /accounting/assets
 """
 
 import os
@@ -17,7 +17,7 @@ API_KEY = os.environ.get("TT_API_KEY")
 API_SECRET = os.environ.get("TT_API_SECRET")
 
 if not API_KEY or not API_SECRET:
-    print("خطا: کلیدهای TT_API_KEY یا TT_API_SECRET تنظیم نشده‌اند.")
+    print("خطا: کلیدهای API تنظیم نشده‌اند.")
     sys.exit(1)
 
 
@@ -35,7 +35,7 @@ def request(method: str, uri: str):
         "X-API-Key": API_KEY,
         "X-Timestamp": timestamp,
         "X-Signature": signature,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "User-Agent": "Mozilla/5.0",
         "Accept": "application/json",
     }
 
@@ -52,26 +52,12 @@ def request(method: str, uri: str):
 
 
 def main():
-    # تست مسیرهای جدید و آدرس‌های بدون پیشوند /futures
-    endpoints = [
-        "/user/wallet",
-        "/user/balance",
-        "/account/balance",
-        "/user/info",
-        "/futures/positions/account",
-        "/futures/users/me",
-        "/futures/user-balance"
-    ]
-
     print("============================================================")
-    print("بررسی سری دوم Endpointها برای یافتن موجودی کل (Equity)")
+    print("بررسی خروجی /accounting/assets")
     print("============================================================\n")
 
-    for ep in endpoints:
-        print(f"--> تست مسیر: {ep}")
-        res = request("GET", ep)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        print("-" * 60)
+    res = request("GET", "/accounting/assets")
+    print(json.dumps(res, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
