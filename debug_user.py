@@ -1,5 +1,5 @@
 """
-RiskGuard — اسکریپت عیب‌یابی و خواندن ساختار کامل API کاربر و موجودی
+RiskGuard — تست آدرس‌های بدون پیشوند futures برای یافتن موجودی
 """
 
 import os
@@ -12,7 +12,6 @@ import urllib.request
 import urllib.error
 
 BASE_URL = "https://apiv2.thetruetrade.io"
-FUTURES_PREFIX = "/futures"
 
 API_KEY = os.environ.get("TT_API_KEY")
 API_SECRET = os.environ.get("TT_API_SECRET")
@@ -53,17 +52,19 @@ def request(method: str, uri: str):
 
 
 def main():
+    # تست مسیرهای جدید و آدرس‌های بدون پیشوند /futures
     endpoints = [
-        f"{FUTURES_PREFIX}/user/me",
-        f"{FUTURES_PREFIX}/user/profile",
-        f"{FUTURES_PREFIX}/user",
-        f"{FUTURES_PREFIX}/account",
-        f"{FUTURES_PREFIX}/wallet",
-        f"{FUTURES_PREFIX}/balance",
+        "/user/wallet",
+        "/user/balance",
+        "/account/balance",
+        "/user/info",
+        "/futures/positions/account",
+        "/futures/users/me",
+        "/futures/user-balance"
     ]
 
     print("============================================================")
-    print("بررسی Endpointهای مختلف برای یافتن موجودی کل (Equity/Balance)")
+    print("بررسی سری دوم Endpointها برای یافتن موجودی کل (Equity)")
     print("============================================================\n")
 
     for ep in endpoints:
