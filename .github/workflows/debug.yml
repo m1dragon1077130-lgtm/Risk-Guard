@@ -1,0 +1,22 @@
+name: Debug Positions
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Print raw positions response
+        env:
+          TT_API_KEY: ${{ secrets.TT_API_KEY }}
+          TT_API_SECRET: ${{ secrets.TT_API_SECRET }}
+        run: python debug_positions.py
