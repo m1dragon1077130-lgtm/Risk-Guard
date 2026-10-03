@@ -1,4 +1,3 @@
-
 """
 اسکریپت موقت برای دیدن دقیق فیلدهای واقعی پاسخ GET /futures/positions
 فقط یه‌بار اجرا کن و خروجی کنسول (Actions log) رو کپی کن و بفرست.
@@ -52,12 +51,36 @@ def request(method, uri):
 
 
 print("=" * 60)
-print("پاسخ خام GET /futures/positions:")
+print("بررسی ساختار پاسخ GET /futures/positions:")
 print("=" * 60)
 positions = request("GET", "/futures/positions")
-print(json.dumps(positions, indent=2, ensure_ascii=False))
-print("=" * 60)
 
-if positions:
-    for p in positions:
-        print("کلیدهای موجود در هر پوزیشن:", list(p.keys()))
+print("نوع داده (type):", type(positions))
+
+if isinstance(positions, dict):
+    print("این یک dict است. کلیدهای سطح بالا:", list(positions.keys()))
+    for k, v in positions.items():
+        print(f"  کلید '{k}' -> نوع: {type(v)}", end="")
+        if isinstance(v, list):
+            print(f", تعداد عضو: {len(v)}")
+            if len(v) > 0:
+                print(f"    نوع عضو اول: {type(v[0])}")
+                if isinstance(v[0], dict):
+                    print(f"    کلیدهای عضو اول: {list(v[0].keys())}")
+        else:
+            print()
+elif isinstance(positions, list):
+    print("این یک list است. تعداد عضو:", len(positions))
+    if len(positions) > 0:
+        print("نوع عضو اول:", type(positions[0]))
+        if isinstance(positions[0], dict):
+            print("کلیدهای عضو اول:", list(positions[0].keys()))
+        else:
+            print("مقدار عضو اول:", positions[0])
+else:
+    print("مقدار:", positions)
+
+print("=" * 60)
+print("JSON کامل (برای اطمینان):")
+print("=" * 60)
+print(json.dumps(positions, indent=2, ensure_ascii=False)[:3000])
