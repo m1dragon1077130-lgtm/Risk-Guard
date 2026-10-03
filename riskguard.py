@@ -26,15 +26,4 @@ def get_total_equity() -> float:
         total_margin = 0.0
         total_pnl = 0.0
         for p in items:
-            if p.get("status") == "OPENED" and p.get("isActive"):
-                total_margin += float(p.get("initialMargin", 0))
-                total_pnl += float(p.get("unrealizedPnL", 0))
-        
-        # اگر پوزیشن باز دارید، مارجین + PnL محاسبه می‌شود
-        calculated_equity = total_margin + total_pnl
-        if calculated_equity > 0:
-            print(f"موجودی بر اساس پوزیشن‌های فعال محاسبه شد: ${calculated_equity}")
-            return calculated_equity
-
-    print("⚠️️ هشدار: موجودی دریافت نشد.")
-    return 0.0
+            if p.get("status") == "OPENED" 
