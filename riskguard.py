@@ -1,12 +1,6 @@
 """
 RiskGuard — ربات مدیریت ریسک برای TrueTrade
-قوانین:
-  ۱. هر پوزیشن بدون حد ضرر، خودکار حد ضرر (بر اساس ۳٪ ریسک کل سرمایه و اهرم) می‌گیرد.
-  ۲. اگر حد ضرر در جهت افزایش ریسک جابه‌جا شود، برمی‌گردد سر جایش.
-  ۳. فقط قدیمی‌ترین پوزیشن باز نگه‌داشته می‌شود و تمام معاملات جدیدتر بسته می‌شوند.
-
-این اسکریپت یک‌بار اجرا می‌شود و خارج می‌شود (برای اجرا با GitHub Actions هر چند دقیقه).
-حالت state در یک فایل JSON ذخیره می‌شود.
+تغییر جدید: محاسبه حد ضرر دقیقاً بر اساس ۳٪ از «کل موجودی اکانت» (Equity)
 """
 
 import os
@@ -19,7 +13,7 @@ import urllib.request
 import urllib.error
 
 # ---------------- تنظیمات ----------------
-RISK_PERCENT = float(os.environ.get("RISK_PERCENT", "3.0"))  # درصد ریسک از کل سرمایه (Equity)
+RISK_PERCENT = float(os.environ.get("RISK_PERCENT", "3.0"))  # ۳٪ از کل موجودی اکانت
 ONLY_ONE_TRADE = os.environ.get("ONLY_ONE_TRADE", "true").lower() == "true"
 LOCK_STOP_LOSS = os.environ.get("LOCK_STOP_LOSS", "true").lower() == "true"
 
@@ -74,6 +68,20 @@ def request(method: str, uri: str, body: dict = None):
         return None
 
 
+# ---------------- دریافت کل موجودی حساب ----------------
+def get_account_balance() -> float:
+    """دریافت کل موجودی (Equity/Balance) حساب فیوچرز از API"""
+    res = request("GET", f"{FUTURES_PREFIX}/account")
+    if res and isinstance(res, dict):
+        # بررسی فیلدهای متداول موجودی در TrueTrade
+        balance = res.get("equity") or res.get("balance") or res.get("totalWalletBalance")
+        if balance is not None:
+            return float(balance)
+    
+    print("هشدار: نتونستم موجودی کل حساب رو بخونم. مقدار پیش‌فرض 0 برگردونده شد.")
+    return 0.0
+
+
 # ---------------- مدیریت State ----------------
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -94,53 +102,65 @@ def save_state(state):
         print(f"خطا در ذخیره فایل state: {e}")
 
 
-# ---------------- منطق اصلی محاسبه حد ضرر ----------------
-def calc_stop_loss(entry_price: float, side: str, account_risk_percent: float, leverage: float = 1.0) -> float:
+# ---------------- منطق اصلی محاسبه حد ضرر بر اساس کل موجودی ----------------
+def calc_stop_loss_from_equity(
+    entry_price: float, 
+    quantity: float, 
+    side: str, 
+    total_equity: float, 
+    account_risk_percent: float
+) -> float:
     """
-    محاسبه حد ضرر قیمتی بر اساس درصد ریسک کل سرمایه و اهرم معامله.
-    درصد ریسک روی قیمت = (درصد ریسک حساب) / اهرم
+    محاسبه حد ضرر دقیق بر اساس درصد از کل موجودی اکانت (Equity).
+    
+    زیان مجاز به دلار = total_equity * (account_risk_percent / 100)
+    فاصله قیمتی = زیان مجاز / حجم پوزیشن (quantity)
     """
-    if leverage <= 0:
-        leverage = 1.0
+    if quantity <= 0:
+        return entry_price
 
-    price_risk_percent = account_risk_percent / leverage
-    distance = entry_price * (price_risk_percent / 100.0)
+    # دلار زیان مجاز
+    max_loss_usd = total_equity * (account_risk_percent / 100.0)
+    
+    # میزان انحراف قیمت
+    price_distance = max_loss_usd / quantity
 
     if side.upper() == "LONG":
-        return round(entry_price - distance, 4)
+        return round(entry_price - price_distance, 4)
     else:
-        return round(entry_price + distance, 4)
+        return round(entry_price + price_distance, 4)
 
 
 def main():
     state = load_state()
 
+    # ۱. دریافت کل موجودی حساب
+    total_equity = get_account_balance()
+    print(f"موجودی کل حساب (Equity): {total_equity} دلار")
+
+    # ۲. دریافت پوزیشن‌ها
     response = request("GET", f"{FUTURES_PREFIX}/positions")
     if response is None:
         print("نتونستم پوزیشن‌ها رو بخونم. خروج.")
         return
 
     positions = response.get("items", []) if isinstance(response, dict) else response
-
     open_positions = [p for p in positions if p.get("status") == "OPENED" and p.get("isActive")]
     print(f"تعداد پوزیشن‌های باز: {len(open_positions)}")
 
     # --- قانون ۳: فقط نگه داشتن «قدیمی‌ترین» پوزیشن و بستن بقیه ---
     if ONLY_ONE_TRADE and len(open_positions) > 1:
-        # مرتب‌سازی بر اساس createdAt (در صورت وجود) یا شناسه پوزیشن (id کوچک‌تر/قدیمی‌تر)
         open_positions.sort(key=lambda p: (p.get("createdAt", ""), p.get("id")))
 
         oldest_position = open_positions[0]
         oldest_id = oldest_position["id"]
-        print(f"قدیمی‌ترین پوزیشن شناسایی شده: ID {oldest_id} ({oldest_position.get('symbol')})")
+        print(f"قدیمی‌ترین پوزیشن نگه داشته شد: ID {oldest_id} ({oldest_position.get('symbol')})")
 
-        # بستن تمام پوزیشن‌های جدیدتر
         for p in open_positions[1:]:
             pid = p["id"]
-            print(f"بستن پوزیشن جدیدتر {pid} ({p.get('symbol')}) طبق قانون «فقط نگه داشتن قدیمی‌ترین معامله»")
+            print(f"بستن پوزیشن جدیدتر {pid} ({p.get('symbol')}) طبق قانون «فقط یک معامله باز»")
             request("POST", f"{FUTURES_PREFIX}/positions/{pid}/close", {"orderType": "MARKET"})
         
-        # تنها قدیمی‌ترین پوزیشن برای مدیریت حد ضرر باقی می‌ماند
         open_positions = [oldest_position]
 
     for p in open_positions:
@@ -150,28 +170,34 @@ def main():
         entry_price = float(p["entryPrice"])
         current_sl = p.get("stopLoss")
         
-        # استخراج اهرم پوزیشن از API (در صورت عدم ارسال، فرض روی 1x)
-        leverage = float(p.get("leverage", 1.0))
+        # حجم پوزیشن (تعداد کوین/قرارداد)
+        quantity = float(p.get("size") or p.get("quantity") or p.get("contracts") or 0)
 
         key = pid
 
         if key not in state:
-            # اگر حد ضرر تنظیم نشده باشد
             if current_sl is None or str(current_sl).strip() == "" or float(current_sl or 0) == 0:
-                new_sl = calc_stop_loss(entry_price, side, RISK_PERCENT, leverage)
-                print(f"تنظیم حد ضرر اجباری (ریسک {RISK_PERCENT}% حساب با اهرم {leverage}x) برای {symbol} (id={pid}) روی {new_sl}")
-                
+                if total_equity > 0 and quantity > 0:
+                    new_sl = calc_stop_loss_from_equity(entry_price, quantity, side, total_equity, RISK_PERCENT)
+                    print(f"تنظیم حد ضرر اجباری (۳٪ کل حساب = {round(total_equity * 0.03, 3)}$) برای {symbol} روی {new_sl}")
+                else:
+                    # پشتیبان در صورت عدم دریافت موجودی یا حجم
+                    leverage = float(p.get("leverage", 1.0))
+                    price_risk = (RISK_PERCENT / leverage) / 100.0
+                    dist = entry_price * price_risk
+                    new_sl = round(entry_price - dist if side.upper() == "LONG" else entry_price + dist, 4)
+                    print(f"تنظیم حد ضرر تخمینی برای {symbol} روی {new_sl}")
+
                 result = request(
                     "PATCH",
                     f"{FUTURES_PREFIX}/positions/{pid}/tpsl",
                     {"stopLoss": str(new_sl), "stopLossOrderType": "STOP_MARKET"},
                 )
                 if result is not None:
-                    state[key] = {"symbol": symbol, "side": side, "sl": new_sl, "leverage": leverage}
+                    state[key] = {"symbol": symbol, "side": side, "sl": new_sl}
             else:
-                # اگر کاربر خودش حد ضرر گذاشته باشد
-                state[key] = {"symbol": symbol, "side": side, "sl": float(current_sl), "leverage": leverage}
-                print(f"پوزیشن {symbol} (id={pid}) از قبل حد ضرر {current_sl} داشت؛ ذخیره در state.")
+                state[key] = {"symbol": symbol, "side": side, "sl": float(current_sl)}
+                print(f"پوزیشن {symbol} از قبل حد ضرر {current_sl} داشت؛ ذخیره در state.")
         else:
             # --- قانون ۲: قفل جابه‌جایی حد ضرر ---
             if LOCK_STOP_LOSS and current_sl:
@@ -187,17 +213,17 @@ def main():
                         risk_increased = True
 
                 if risk_increased:
-                    print(f"افزایش ریسک شناسایی شد در {symbol} (id={pid}). برگردوندن حد ضرر به {original_sl}")
+                    print(f"افزایش ریسک شناسایی شد در {symbol}. برگردوندن حد ضرر به {original_sl}")
                     request(
                         "PATCH",
                         f"{FUTURES_PREFIX}/positions/{pid}/tpsl",
                         {"stopLoss": str(original_sl), "stopLossOrderType": "STOP_MARKET"},
                     )
                 elif abs(current_sl_f - original_sl) > 1e-6:
-                    print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد (تثبیت سود/تریل): {original_sl} -> {current_sl_f}")
+                    print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد: {original_sl} -> {current_sl_f}")
                     state[key]["sl"] = current_sl_f
 
-    # پاک‌سازی پوزیشن‌های بسته شده از فایل state
+    # پاک‌سازی state
     open_ids = {str(p["id"]) for p in open_positions}
     for k in list(state.keys()):
         if k not in open_ids:
