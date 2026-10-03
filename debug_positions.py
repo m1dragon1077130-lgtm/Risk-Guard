@@ -1,3 +1,4 @@
+
 """
 اسکریپت موقت برای دیدن دقیق فیلدهای واقعی پاسخ GET /futures/positions
 فقط یه‌بار اجرا کن و خروجی کنسول (Actions log) رو کپی کن و بفرست.
@@ -34,6 +35,8 @@ def request(method, uri):
         "X-API-Key": API_KEY,
         "X-Timestamp": timestamp,
         "X-Signature": signature,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json",
     }
     req = urllib.request.Request(url, headers=headers, method=method.upper())
     try:
