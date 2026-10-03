@@ -108,10 +108,13 @@ def calc_stop_loss(entry_price: float, side: str, risk_percent: float) -> float:
 def main():
     state = load_state()
 
-    positions = request("GET", f"{FUTURES_PREFIX}/positions")
-    if positions is None:
+    response = request("GET", f"{FUTURES_PREFIX}/positions")
+    if response is None:
         print("نتونستم پوزیشن‌ها رو بخونم. خروج.")
         return
+
+    # پاسخ API صفحه‌بندی‌شده است: {"meta": {...}, "items": [...]}
+    positions = response.get("items", []) if isinstance(response, dict) else response
 
     open_positions = [p for p in positions if p.get("status") == "OPENED" and p.get("isActive")]
     print(f"تعداد پوزیشن‌های باز: {len(open_positions)}")
