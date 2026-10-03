@@ -1,6 +1,9 @@
 """
-RiskGuard — ربات مدیریت ریسک برای TrueTrade
-تغییر جدید: محاسبه حد ضرر دقیقاً بر اساس ۳٪ از «کل موجودی اکانت» (Equity)
+RiskGuard — ربات مدیریت ریسک برای TrueTrade (نسخه هوشمند و دیباگ)
+قوانین:
+  ۱. محاسبه حد ضرر دقیق بر اساس ۳٪ از کل موجودی اکانت (Equity).
+  ۲. قفل جابه‌جایی حد ضرر به سمت افزایش ریسک.
+  ۳. نگه‌داشتن فقط قدیمی‌ترین پوزیشن و بستن بقیه معاملات.
 """
 
 import os
@@ -68,17 +71,41 @@ def request(method: str, uri: str, body: dict = None):
         return None
 
 
-# ---------------- دریافت کل موجودی حساب ----------------
+# ---------------- استخراج موجودی حساب ----------------
 def get_account_balance() -> float:
-    """دریافت کل موجودی (Equity/Balance) حساب فیوچرز از API"""
+    """دریافت و جستجوی خودکار فیلد موجودی کل حساب (Equity/Balance)"""
     res = request("GET", f"{FUTURES_PREFIX}/account")
     if res and isinstance(res, dict):
-        # بررسی فیلدهای متداول موجودی در TrueTrade
-        balance = res.get("equity") or res.get("balance") or res.get("totalWalletBalance")
-        if balance is not None:
-            return float(balance)
-    
-    print("هشدار: نتونستم موجودی کل حساب رو بخونم. مقدار پیش‌فرض 0 برگردونده شد.")
+        print(f"[DEBUG] پاسخ API اکانت: {json.dumps(res, ensure_ascii=False)}")
+        
+        # جستجوی فیلدهای ممکن
+        for key in ["equity", "balance", "totalWalletBalance", "totalMargin", "availableBalance", "walletBalance"]:
+            if key in res and res[key] is not None:
+                val = float(res[key])
+                if val > 0:
+                    return val
+            # اگر داده در دیتای لایه دوم باشد
+            if "data" in res and isinstance(res["data"], dict):
+                if key in res["data"] and res["data"][key] is not None:
+                    val = float(res["data"][key])
+                    if val > 0:
+                        return val
+
+    print("⚠️ هشدار: فیلد موجودی حساب شناسایی نشد.")
+    return 0.0
+
+
+# ---------------- استخراج حجم پوزیشن ----------------
+def get_position_quantity(p: dict) -> float:
+    """استخراج حجم پوزیشن از فیلدهای مختلف احتمالی"""
+    for key in ["quantity", "size", "contracts", "amount", "positionAmt", "volume"]:
+        if key in p and p[key] is not None:
+            try:
+                val = abs(float(p[key]))
+                if val > 0:
+                    return val
+            except ValueError:
+                pass
     return 0.0
 
 
@@ -102,28 +129,25 @@ def save_state(state):
         print(f"خطا در ذخیره فایل state: {e}")
 
 
-# ---------------- منطق اصلی محاسبه حد ضرر بر اساس کل موجودی ----------------
-def calc_stop_loss_from_equity(
-    entry_price: float, 
-    quantity: float, 
-    side: str, 
-    total_equity: float, 
-    account_risk_percent: float
-) -> float:
+# ---------------- فرمول اصلی محاسبه حد ضرر ----------------
+def calc_stop_loss(entry_price: float, quantity: float, side: str, total_equity: float, risk_percent: float, leverage: float) -> float:
     """
-    محاسبه حد ضرر دقیق بر اساس درصد از کل موجودی اکانت (Equity).
-    
-    زیان مجاز به دلار = total_equity * (account_risk_percent / 100)
-    فاصله قیمتی = زیان مجاز / حجم پوزیشن (quantity)
+    ۱. اگر کل موجودی و حجم دقیق خوانده شد: بر اساس ۳٪ کل موجودی
+    ۲. در غیر این صورت (Fallback): بر اساس درصد ریسک تقسیم بر اهرم روی قیمت ورود
     """
-    if quantity <= 0:
-        return entry_price
-
-    # دلار زیان مجاز
-    max_loss_usd = total_equity * (account_risk_percent / 100.0)
-    
-    # میزان انحراف قیمت
-    price_distance = max_loss_usd / quantity
+    if total_equity > 0 and quantity > 0:
+        # زیان مجاز به دلار
+        max_loss_usd = total_equity * (risk_percent / 100.0)
+        # انحراف قیمت لازم برای ایجاد این زیان
+        price_distance = max_loss_usd / quantity
+        print(f"-> محاسبه بر اساس Equity: ریسک دلار = ${round(max_loss_usd, 3)} | انحراف قیمت = {round(price_distance, 4)}")
+    else:
+        # روش رزرو در صورت عدم دریافت موجودی/حجم
+        if leverage <= 0:
+            leverage = 1.0
+        price_risk_percent = risk_percent / leverage
+        price_distance = entry_price * (price_risk_percent / 100.0)
+        print(f"-> محاسبه رزرو (بر اساس اهرم {leverage}x): انحراف قیمت = {round(price_distance, 4)}")
 
     if side.upper() == "LONG":
         return round(entry_price - price_distance, 4)
@@ -136,7 +160,7 @@ def main():
 
     # ۱. دریافت کل موجودی حساب
     total_equity = get_account_balance()
-    print(f"موجودی کل حساب (Equity): {total_equity} دلار")
+    print(f"موجودی کل حساب شناسایی شده: {total_equity} دلار")
 
     # ۲. دریافت پوزیشن‌ها
     response = request("GET", f"{FUTURES_PREFIX}/positions")
@@ -169,24 +193,21 @@ def main():
         side = p["side"]
         entry_price = float(p["entryPrice"])
         current_sl = p.get("stopLoss")
+        leverage = float(p.get("leverage", 1.0))
         
-        # حجم پوزیشن (تعداد کوین/قرارداد)
-        quantity = float(p.get("size") or p.get("quantity") or p.get("contracts") or 0)
+        # چاپ داده‌های پوزیشن برای دیباگ دقیق
+        print(f"\n[DEBUG] داده پوزیشن {symbol} (id={pid}): {json.dumps(p, ensure_ascii=False)}")
+
+        # استخراج حجم معامله
+        quantity = get_position_quantity(p)
 
         key = pid
 
         if key not in state:
+            # اگر حد ضرر ندارد یا صفره
             if current_sl is None or str(current_sl).strip() == "" or float(current_sl or 0) == 0:
-                if total_equity > 0 and quantity > 0:
-                    new_sl = calc_stop_loss_from_equity(entry_price, quantity, side, total_equity, RISK_PERCENT)
-                    print(f"تنظیم حد ضرر اجباری (۳٪ کل حساب = {round(total_equity * 0.03, 3)}$) برای {symbol} روی {new_sl}")
-                else:
-                    # پشتیبان در صورت عدم دریافت موجودی یا حجم
-                    leverage = float(p.get("leverage", 1.0))
-                    price_risk = (RISK_PERCENT / leverage) / 100.0
-                    dist = entry_price * price_risk
-                    new_sl = round(entry_price - dist if side.upper() == "LONG" else entry_price + dist, 4)
-                    print(f"تنظیم حد ضرر تخمینی برای {symbol} روی {new_sl}")
+                new_sl = calc_stop_loss(entry_price, quantity, side, total_equity, RISK_PERCENT, leverage)
+                print(f"ارسال درخواست حد ضرر جدید برای {symbol} (id={pid}) روی قیمت: {new_sl}")
 
                 result = request(
                     "PATCH",
@@ -194,7 +215,10 @@ def main():
                     {"stopLoss": str(new_sl), "stopLossOrderType": "STOP_MARKET"},
                 )
                 if result is not None:
+                    print(f"✅ حد ضرر با موفقیت روی {new_sl} ست شد.")
                     state[key] = {"symbol": symbol, "side": side, "sl": new_sl}
+                else:
+                    print(f"❌ خطا در ثبت حد ضرر از سمت صرافی.")
             else:
                 state[key] = {"symbol": symbol, "side": side, "sl": float(current_sl)}
                 print(f"پوزیشن {symbol} از قبل حد ضرر {current_sl} داشت؛ ذخیره در state.")
@@ -213,7 +237,7 @@ def main():
                         risk_increased = True
 
                 if risk_increased:
-                    print(f"افزایش ریسک شناسایی شد در {symbol}. برگردوندن حد ضرر به {original_sl}")
+                    print(f"⚠️ افزایش ریسک شناسایی شد در {symbol}. برگردوندن حد ضرر به {original_sl}")
                     request(
                         "PATCH",
                         f"{FUTURES_PREFIX}/positions/{pid}/tpsl",
@@ -231,7 +255,7 @@ def main():
             del state[k]
 
     save_state(state)
-    print("اجرا کامل شد.")
+    print("\nاجرا کامل شد.")
 
 
 if __name__ == "__main__":
