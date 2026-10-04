@@ -1,0 +1,41 @@
+name: Continuous RiskGuard Engine
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # پشتیبان روزانه در صورت قطعی شبکه
+  workflow_dispatch:      # قابلیت اجرای دستی
+  repository_dispatch:    # فراخوانی خودکار توسط چرخه قبلی
+    types: [rerun_riskguard]
+
+concurrency:
+  group: riskguard-single-instance
+  cancel-in-progress: false
+
+jobs:
+  run-riskguard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Run RiskGuard Continuous Loop (5h 50m)
+        env:
+          TT_API_KEY: ${{ secrets.TT_API_KEY }}
+          TT_API_SECRET: ${{ secrets.TT_API_SECRET }}
+          ONLY_ONE_TRADE: "true"
+          LOCK_STOP_LOSS: "true"
+        run: python riskguard.py
+
+      - name: Trigger Next Chain Execution
+        if: always() # حتی در صورت رخ دادن خطا، چرخه بعدی فراخوانی شود
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.PERSONAL_GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{"event_type": "rerun_riskguard"}'
