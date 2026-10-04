@@ -1,6 +1,6 @@
 """
-RiskGuard — ربات مدیریت ریسک، حد ضرر (۰.۵$) و حد سود (۲.۵$) حساب TrueTrade
-اجرای پیوسته و مداوم روی GitHub Actions (اصلاح شده برای کنترل لحظه‌ای TP/SL)
+RiskGuard — ربات مدیریت ریسک، حد ضرر (۰.۵$)، حد سود (۵ برابر ریسک) و قفل سود روی R:R=1
+اجرای پیوسته و مداوم روی GitHub Actions
 """
 
 import os
@@ -13,8 +13,10 @@ import urllib.request
 import urllib.error
 
 # ---------------- تنظیمات ثابت ریسک و سود ----------------
-MAX_LOSS_USD = 0.50    # حداکثر حد ضرر: ۵۰ سنت
-MAX_PROFIT_USD = 2.50  # حداکثر حد سود: ۲ دلار و ۵۰ سنت
+MAX_LOSS_USD = 0.50         # حداکثر حد ضرر: ۵۰ سنت ($۰.۵۰)
+REWARD_RATIO = 5.0          # حد سود: ۵ برابر حد ضرر ($۲.۵۰)
+TRIGGER_RATIO = 2.0         # آستانه جابه‌‌جایی SL: ۲ برابر حد ضرر ($۱.۰۰ سود شناور)
+LOCK_PROFIT_RATIO = 1.0     # قفل سود: انتقال SL به ۱ برابر حد ضرر ($۰.۵۰ سود)
 
 # زمان‌بندی اجرای پیوسته روی گیتهاب اکشنز
 MAX_RUN_TIME_SECONDS = 5 * 3600 + 50 * 60  # ۵ ساعت و ۵۰ دقیقه
@@ -119,7 +121,7 @@ def run_riskguard_cycle(state):
         
         open_positions = [oldest_position]
 
-    # ۲. بررسی و تنظیم پیوسته حد ضرر (۰.۵۰$) و حد سود (۲.۵۰$)
+    # ۲. بررسی و مدیریت ریسک، حد ضرر، حد سود و قفل سود
     for p in open_positions:
         pid = str(p["id"])
         symbol = p["symbol"]
@@ -128,70 +130,83 @@ def run_riskguard_cycle(state):
         size = float(p.get("size", 0))
         current_sl = p.get("stopLoss")
         current_tp = p.get("takeProfit")
+        unrealized_pnl = float(p.get("unrealizedPnl", 0) or p.get("pnl", 0) or 0)
 
         if size <= 0:
             continue
 
-        # محاسبه فاصله‌های قیمتی استاندارد
-        sl_distance = MAX_LOSS_USD / size
-        tp_distance = MAX_PROFIT_USD / size
+        # محاسبه فاصله‌های قیمتی
+        sl_distance = MAX_LOSS_USD / size                          # فاصله ۰.۵۰$ (ریسک)
+        tp_distance = (MAX_LOSS_USD * REWARD_RATIO) / size         # فاصله ۲.۵۰$ (۵ برابر ریسک)
+        lock_profit_distance = (MAX_LOSS_USD * LOCK_PROFIT_RATIO) / size # فاصله ۰.۵۰$ سود (۱ برابر ریسک)
 
         if side == "LONG":
             target_sl = round(entry_price - sl_distance, 4)
             target_tp = round(entry_price + tp_distance, 4)
+            profit_sl_price = round(entry_price + lock_profit_distance, 4) # قیمت حد ضرر در سود R:R=1
         else:
             target_sl = round(entry_price + sl_distance, 4)
             target_tp = round(entry_price - tp_distance, 4)
+            profit_sl_price = round(entry_price - lock_profit_distance, 4) # قیمت حد ضرر در سود R:R=1
 
         key = pid
         needs_update = False
         payload = {"stopLossOrderType": "STOP_MARKET", "takeProfitOrderType": "TAKE_PROFIT_MARKET"}
 
-        # اگر برای بار اول است که پوزیشن را می‌بینیم
+        # ذخیره وضعیت اولیه پوزیشن
         if key not in state:
             state[key] = {
                 "symbol": symbol,
                 "side": side,
+                "entry": entry_price,
                 "initial_sl": target_sl,
                 "initial_tp": target_tp,
                 "sl": target_sl,
-                "tp": target_tp
+                "tp": target_tp,
+                "is_profit_locked": False
             }
 
-        # چک کردن حد ضرر: اگر پاک شده بود یا ریسک بیشتر شده بود، اصلاح شود
-        if current_sl is None or str(current_sl).strip() == "" or float(current_sl or 0) == 0:
-            print(f"⚠️ حد ضرر {symbol} حذف شده بود! تنظیم مجدد روی {state[key]['sl']}")
-            payload["stopLoss"] = str(state[key]["sl"])
+        # ۳. بررسی شرط قفل سود (اگر سود شناور به ۲ برابر حد ضرر اولیه / ۱.۰۰$ رسید)
+        trigger_threshold = MAX_LOSS_USD * TRIGGER_RATIO  # معادل ۱.۰۰ دلار سود
+        if unrealized_pnl >= trigger_threshold and not state[key].get("is_profit_locked", False):
+            print(f"🎯 سود {symbol} به بیش از {trigger_threshold}$ رسید ({unrealized_pnl:.2f}$). انتقال حد ضرر به R:R=1 (قیمت: {profit_sl_price} / سود قفل‌شده: +0.50$).")
+            state[key]["sl"] = profit_sl_price
+            state[key]["is_profit_locked"] = True
+            payload["stopLoss"] = str(profit_sl_price)
             needs_update = True
-        elif LOCK_STOP_LOSS:
-            current_sl_f = float(current_sl)
-            saved_sl_f = float(state[key]["sl"])
-            
-            # اگر حد ضرر طوری تغییر کرده که ریسک را افزایش می‌دهد
-            risk_increased = False
-            if side == "LONG" and current_sl_f < saved_sl_f - 1e-6:
-                risk_increased = True
-            elif side == "SHORT" and current_sl_f > saved_sl_f + 1e-6:
-                risk_increased = True
 
-            if risk_increased:
-                print(f"⚠️ افزایش ریسک در {symbol}! بازگرداندن حد ضرر از {current_sl_f} به {saved_sl_f}")
-                payload["stopLoss"] = str(saved_sl_f)
+        # ۴. کنترل و تثبیت حد ضرر (در صورت پاک شدن یا افزایش ریسک)
+        if not needs_update:
+            if current_sl is None or str(current_sl).strip() == "" or float(current_sl or 0) == 0:
+                print(f"⚠️ حد ضرر {symbol} حذف شده بود! تنظیم مجدد روی {state[key]['sl']}")
+                payload["stopLoss"] = str(state[key]["sl"])
                 needs_update = True
-            elif abs(current_sl_f - saved_sl_f) > 1e-6:
-                # اگر حد ضرر به نفع معامله (ریسک کمتر) جابه‌جا شد، آن را بپذیر
-                print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد: {saved_sl_f} -> {current_sl_f}")
-                state[key]["sl"] = current_sl_f
+            elif LOCK_STOP_LOSS:
+                current_sl_f = float(current_sl)
+                saved_sl_f = float(state[key]["sl"])
+                
+                risk_increased = False
+                if side == "LONG" and current_sl_f < saved_sl_f - 1e-6:
+                    risk_increased = True
+                elif side == "SHORT" and current_sl_f > saved_sl_f + 1e-6:
+                    risk_increased = True
 
-        # چک کردن حد سود: اگر پاک شده بود، مجدداً ست شود
+                if risk_increased:
+                    print(f"⚠️ افزایش ریسک در {symbol}! بازگرداندن حد ضرر از {current_sl_f} به {saved_sl_f}")
+                    payload["stopLoss"] = str(saved_sl_f)
+                    needs_update = True
+                elif abs(current_sl_f - saved_sl_f) > 1e-6:
+                    print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد: {saved_sl_f} -> {current_sl_f}")
+                    state[key]["sl"] = current_sl_f
+
+        # ۵. کنترل حد سود (تنظیم یا جایگزینی در صورت پاک شدن)
         if current_tp is None or str(current_tp).strip() == "" or float(current_tp or 0) == 0:
-            print(f"⚠️ حد سود {symbol} حذف شده بود! تنظیم مجدد روی {state[key]['tp']}")
+            print(f"⚠️ حد سود {symbol} حذف شده بود! تنظیم مجدد روی ۵ برابر ریسک ({state[key]['tp']})")
             payload["takeProfit"] = str(state[key]["tp"])
             needs_update = True
 
-        # اگر نیاز به ارسال درخواست جدید برای اصلاح TP/SL بود
+        # اعمال تغییرات روی صرافی
         if needs_update:
-            # اگر یکی از پارامترها در payload نبود، مقدار فعلی آن ارسال شود تا متغیر دیگر دست‌نخورده بماند
             if "stopLoss" not in payload:
                 payload["stopLoss"] = str(current_sl) if current_sl else str(state[key]["sl"])
             if "takeProfit" not in payload:
@@ -199,7 +214,7 @@ def run_riskguard_cycle(state):
 
             result = request("PATCH", f"{FUTURES_PREFIX}/positions/{pid}/tpsl", payload)
             if result is not None:
-                print(f"✅ اصلاح TP/SL برای {symbol} با موفقیت انجام شد.")
+                print(f"✅ اصلاح/تنظیم TP/SL برای {symbol} با موفقیت انجام شد.")
             else:
                 print(f"❌ خطا در اصلاح TP/SL برای {symbol}.")
 
