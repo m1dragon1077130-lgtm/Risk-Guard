@@ -95,24 +95,42 @@ def save_state(state):
 # ---------------- منطق اصلی ----------------
 def get_futures_balance() -> float:
     """
-    موجودی کل حساب فیوچرز (نه بخشی از قیمت یا حجم معامله) رو از
-    GET /accounting/assets می‌خونه. ریسک همیشه نسبت به همین عدد
-    محاسبه می‌شه، نه نسبت به حجم یا قیمت ورود معامله.
+    موجودی کل حساب فیوچرز رو می‌خونه. چون /accounting/assets بدون پارامتر
+    انگار کیف‌پول «funding» رو برمی‌گردونه (نه futures)، اول با
+    accountType=futures امتحان می‌کنیم؛ اگه نشد، از خود پوزیشن‌های باز
+    (initialMargin ها) به‌عنوان جایگزین استفاده می‌کنیم.
     """
+    # تلاش ۱: با پارامتر accountType=futures
+    assets = request("GET", "/accounting/assets?accountType=futures")
+    bal = _extract_usdt_balance(assets)
+    if bal is not None and bal > 0:
+        print(f"موجودی از /accounting/assets?accountType=futures: {bal}")
+        return bal
+
+    # تلاش ۲: بدون پارامتر (fallback)، چاپ کامل برای دیباگ
     assets = request("GET", "/accounting/assets")
+    print("پاسخ خام /accounting/assets (بدون پارامتر):", json.dumps(assets, ensure_ascii=False))
+    bal = _extract_usdt_balance(assets)
+    if bal is not None and bal > 0:
+        print(f"موجودی از /accounting/assets (بدون پارامتر): {bal}")
+        return bal
+
+    print("نتونستیم موجودی USDT فیوچرز معتبر (بزرگ‌تر از صفر) پیدا کنیم.")
+    return None
+
+
+def _extract_usdt_balance(assets):
     if assets is None:
         return None
-
     items = assets.get("items", assets) if isinstance(assets, dict) else assets
     if not isinstance(items, list):
-        print("ساختار پاسخ /accounting/assets غیرمنتظره است:", assets)
         return None
-
     for a in items:
-        if a.get("asset") == "USDT" and a.get("accountType") == "futures":
-            return float(a.get("balance", 0))
-
-    print("رکورد موجودی USDT/futures پیدا نشد:", items)
+        if a.get("asset") == "USDT":
+            try:
+                return float(a.get("availableBalance", a.get("balance", 0)))
+            except (TypeError, ValueError):
+                return None
     return None
 
 
