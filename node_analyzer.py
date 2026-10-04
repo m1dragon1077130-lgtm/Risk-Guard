@@ -1,5 +1,5 @@
 """
-Node Analyzer — الگوریتم اختصاصی تشخیص گره‌های صعودی در BTC و ETH صرافی TTT
+Node Analyzer — الگوریتم اختصاصی تشخیص گره‌های صعودی در صرافی TTT
 منطق: سقف بالاتر + سویپ کف قبلی + شکست سقف (BOS) + محدوده بین Sweep Low و Nearest Higher Low
 """
 
@@ -15,8 +15,8 @@ import urllib.error
 BASE_URL = "https://apiv2.thetruetrade.io"
 FUTURES_PREFIX = "/futures"
 
-API_KEY = os.environ.get("TT_API_KEY")
-API_SECRET = os.environ.get("TT_API_SECRET")
+API_KEY = os.environ.get("TT_API_KEY", "")
+API_SECRET = os.environ.get("TT_API_SECRET", "")
 
 
 def sign(secret: str, timestamp: str, method: str, uri: str) -> str:
@@ -52,8 +52,8 @@ def request(method: str, uri: str, body: dict = None):
         return None
 
 
-def fetch_candles(symbol: str, interval: str = "15m", limit: int = 100):
-    """دریافت کندل‌های TTT برای نماد مورد نظر"""
+def fetch_candles(symbol: str, interval: str = "15m", limit: int = 300):
+    """دریافت کندل‌های TTT برای نماد مورد نظر (افزایش limit به ۳۰۰ برای بررسی کامل‌تر)"""
     uri = f"{FUTURES_PREFIX}/candles?symbol={symbol}&interval={interval}&limit={limit}"
     data = request("GET", uri)
     
@@ -106,45 +106,45 @@ def find_swing_points(candles, left=2, right=2):
 
 
 def detect_bullish_nodes(symbol: str, candles):
-    """محاسبه گره‌های صعودی و کادربندی مربع امتدادیافته به راست"""
-    swings = find_swing_points(candles)
+    """محاسبه گره‌های صعودی (اصلاح‌شده بدون باگ و با دقت بیشتر)"""
+    swings = find_swing_points(candles, left=2, right=2)
     nodes = []
     
-    for i in range(2, len(swings)):
+    for i in range(len(swings)):
         curr = swings[i]
-        prev_swings = swings[:i]
         
-        # ۱. اگر سوئینگ کف جدید ایجاد شده باشد
+        # ۱. بررسی اینکه آیا نقطه فعلی یک کف است
         if curr["type"] == "LOW":
             sweep_low = curr["price"]
             sweep_index = curr["index"]
             
             # ۲. بررسی اینکه آیا زیر حداقل یکی از کف‌های قبلی را زده است؟ (سویپ نقدینگی)
-            prior_lows = [s for s in prev_swings if s["type"] == "LOW"]
+            prior_lows = [s for s in swings[:i] if s["type"] == "LOW"]
             swept_lows = [l for l in prior_lows if sweep_low < l["price"]]
             
             if swept_lows:
-                # ۳. پیدا کردن نزدیک‌ترین کف بالاتر قبلی (Nearest Higher Low)
-                nearest_higher_low = min(l["price"] for l in prior_lows if l["price"] > sweep_low)
+                # ۳. پیدا کردن نزدیک‌ترین کف بالاتر قبلی جهت تعیین مرز بالای گره
+                higher_lows = [l["price"] for l in prior_lows if l["price"] > sweep_low]
+                if not higher_lows:
+                    continue
+                nearest_higher_low = min(higher_lows)
                 
-                # ۴. بررسی شکست سقف بعد از سویپ (Break of Structure - BOS)
-                prior_highs = [s["price"] for s in prior_lows]
-                max_prior_high = max([s["price"] for s in prev_swings if s["type"] == "HIGH"], default=0)
+                # ۴. پیدا کردن بالاترین سقف قبل از سویپ
+                prior_highs = [s["price"] for s in swings[:i] if s["type"] == "HIGH"]
+                if not prior_highs:
+                    continue
+                max_prior_high = max(prior_highs)
                 
-                # آیا قیمت بعد از این کف، سقف قبلی را شکسته است؟
+                # ۵. بررسی شکست سقف بعد از سویپ (Break of Structure - BOS)
                 future_candles = candles[sweep_index:]
                 has_bos = any(c["close"] > max_prior_high for c in future_candles)
                 
-                if has_bos and max_prior_high > 0:
-                    node_top = nearest_higher_low      # مرز بالای مربع
-                    node_bottom = sweep_low             # مرز پایین مربع
-                    
+                if has_bos:
                     nodes.append({
                         "symbol": symbol,
-                        "node_top": node_top,
-                        "node_bottom": node_bottom,
+                        "node_top": nearest_higher_low,   # مرز بالای باکس
+                        "node_bottom": sweep_low,          # مرز پایین باکس (شدوی سویپ)
                         "start_time": curr["time"],
-                        "extended_to_right": True,
                         "status": "ACTIVE_NODE"
                     })
 
@@ -152,25 +152,26 @@ def detect_bullish_nodes(symbol: str, candles):
 
 
 def main():
-    symbols = ["BTCUSDT", "ETHUSDT"]
+    # نمادها (در صورت نیاز نمادهای دیگر مانند ZECUSDT را هم می‌توانید اضافه کنید)
+    symbols = ["BTCUSDT", "ETHUSDT", "ZECUSDT"]
     print("🔍 در حال تحلیل و محاسبه گره‌های صعودی روی چارت TTT...\n")
     
     for sym in symbols:
-        candles = fetch_candles(sym, interval="15m", limit=120)
+        candles = fetch_candles(sym, interval="15m", limit=300)
         if not candles:
             continue
             
         active_nodes = detect_bullish_nodes(sym, candles)
         print(f"================== {sym} ==================")
         if not active_nodes:
-            print(f"هیچ گره جدیدی در ۱۲۰ کندل اخیر پیدا نشد.")
+            print(f"هیچ گره جدیدی پیدا نشد.")
         else:
             for idx, n in enumerate(active_nodes, 1):
                 print(f"📌 گره شماره {idx}:")
-                print(f"   ▫️ مرز بالای گره (Node Top / Entry Upper): {n['node_top']}")
-                print(f"   ▫️ مرز پایین گره (Node Bottom / Entry Lower): {n['node_bottom']}")
-                print(f"   ▫️ وضعیت باکس: مربع امتدادیافته به سمت راست (Extended Right Box)")
-                print(f"   ▫️ زمان تشکیل: {n['start_time']}\n")
+                print(f"    ▫️ مرز بالای گره (Node Top / Entry Upper): {n['node_top']}")
+                print(f"    ▫️ مرز پایین گره (Node Bottom / Entry Lower): {n['node_bottom']}")
+                print(f"    ▫️ وضعیت باکس: مربع امتدادیافته به سمت راست (Extended Right Box)")
+                print(f"    ▫️ زمان تشکیل: {n['start_time']}\n")
 
 
 if __name__ == "__main__":
