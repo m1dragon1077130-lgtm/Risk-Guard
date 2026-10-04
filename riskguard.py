@@ -67,55 +67,35 @@ def request(method: str, uri: str, body: dict = None):
 
 
 def fetch_dynamic_account_equity() -> float:
-    print("\n--- در حال استخراج پویای موجودی کل حساب از API ---")
+    print("\n--- در حال دریافت موجودی حساب فیوچرز از GET /futures/assets ---")
     
-    pos_res = request("GET", f"{FUTURES_PREFIX}/positions")
-    total_futures_equity = 0.0
-
-    if pos_res:
-        items = pos_res.get("items", []) if isinstance(pos_res, dict) else pos_res
-        active_positions = [p for p in items if isinstance(p, dict) and p.get("status") == "OPENED" and p.get("isActive")]
+    res = request("GET", f"{FUTURES_PREFIX}/assets")
+    
+    if res:
+        # اگر پاسخ به صورت لیست باشد یا دیکشنری حاوی items
+        items = res.get("items", []) if isinstance(res, dict) else res
         
-        for p in active_positions:
-            margin = float(p.get("initialMargin", 0))
-            if margin == 0:
-                notional = float(p.get("notionalSize", 0))
-                leverage = float(p.get("leverage", 1))
-                if leverage > 0:
-                    margin = notional / leverage
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict) and item.get("asset") == "USDT":
+                    # بررسی فیلدهای مختلف موجودی (equity / balance / walletBalance)
+                    for key in ["equity", "balance", "walletBalance", "marginBalance", "availableBalance"]:
+                        val = item.get(key)
+                        if val is not None:
+                            try:
+                                equity_val = float(val)
+                                if equity_val > 0:
+                                    print(f"✅ موجودی زنده فیوچرز ({key}): ${round(equity_val, 4)}\n")
+                                    return equity_val
+                            except (ValueError, TypeError):
+                                pass
 
-            pnl = float(p.get("unrealizedPnL", 0))
-            total_futures_equity += (margin + pnl)
-
-        if total_futures_equity > 0:
-            print(f"موجودی پویا از بخش فیوچرز محاسبه شد: ${round(total_futures_equity, 4)}")
-
-    assets_res = request("GET", "/accounting/assets")
-    max_asset_val = 0.0
-
-    if assets_res and isinstance(assets_res, list):
-        for item in assets_res:
-            if isinstance(item, dict):
-                for key in ["equity", "balance", "walletBalance", "marginBalance", "availableBalance"]:
-                    if key in item and item[key] is not None:
-                        try:
-                            val = float(item[key])
-                            if val > max_asset_val and val > 0.01:
-                                max_asset_val = val
-                        except (ValueError, TypeError):
-                            pass
-
-    if max_asset_val > 0:
-        print(f"موجودی پویا از /accounting/assets دریافت شد: ${round(max_asset_val, 4)}")
-
-    final_equity = max(total_futures_equity, max_asset_val)
-
-    if final_equity > 0:
-        print(f"✅ موجودی کل نهایی حساب (Dynamic Equity): ${round(final_equity, 4)}\n")
-        return final_equity
-
-    print("❌ خطا: امکان دریافت پویا موجودی حساب وجود ندارد.")
-    return 0.0
+    print("⚠️ دریافت موجودی از /futures/assets ناموفق بود.")
+    
+    # مقدار رزرو در صورت عدم پاسخ‌گویی API
+    fallback_equity = float(os.environ.get("ACCOUNT_EQUITY", "4.04"))
+    print(f"استفاده از موجودی رزرو: ${fallback_equity}\n")
+    return fallback_equity
 
 
 def load_state():
@@ -142,10 +122,6 @@ def main():
 
     total_equity = fetch_dynamic_account_equity()
 
-    if total_equity <= 0:
-        print("به دلیل عدم موفقیت در دریافت موجودی از API، اجرای کد متوقف شد.")
-        return
-
     target_loss_usd = total_equity * (RISK_PERCENT / 100.0)
     print(f"میزان زیان مجاز ({RISK_PERCENT}٪ از ${round(total_equity, 4)}): ${round(target_loss_usd, 4)}")
 
@@ -162,6 +138,7 @@ def main():
         print("هیچ پوزیشن بازی یافت نشد.")
         return
 
+    # ۱. مدیریت تک‌معامله
     if ONLY_ONE_TRADE and len(open_positions) > 1:
         open_positions.sort(key=lambda p: (p.get("createdAt", ""), p.get("id")))
 
@@ -176,6 +153,7 @@ def main():
         
         open_positions = [oldest_position]
 
+    # ۲. تنظیم و تثبیت حد ضرر
     for p in open_positions:
         pid = str(p["id"])
         symbol = p["symbol"]
