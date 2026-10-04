@@ -1,13 +1,5 @@
 """
-RiskGuard — ربات مدیریت ریسک برای TrueTrade
-قوانین:
-  ۱. هر پوزیشن بدون حد ضرر، خودکار حد ضرر ۳٪ (قابل‌تغییر) می‌گیره
-  ۲. اگه حد ضرر در جهت افزایش ریسک جابه‌جا بشه، برمی‌گرده سر جاش
-  ۳. فقط یک پوزیشن باز مجازه؛ بقیه بسته می‌شن
-
-این اسکریپت یک‌بار اجرا می‌شه و خارج می‌شه (برای اجرا با GitHub Actions
-هر چند دقیقه). حالت state (حد ضرر اصلی هر پوزیشن) در یک فایل JSON
-در همین ریپازیتوری ذخیره می‌شه تا بین اجراها حفظ بشه.
+RiskGuard — ربات مدیریت ریسک و حد ضرر حساب TrueTrade
 """
 
 import os
@@ -20,7 +12,7 @@ import urllib.request
 import urllib.error
 
 # ---------------- تنظیمات ----------------
-RISK_PERCENT = float(os.environ.get("RISK_PERCENT", "3.0"))
+RISK_PERCENT = float(os.environ.get("RISK_PERCENT", "3.0"))  # ۳٪ ریسک از کل موجودی
 ONLY_ONE_TRADE = os.environ.get("ONLY_ONE_TRADE", "true").lower() == "true"
 LOCK_STOP_LOSS = os.environ.get("LOCK_STOP_LOSS", "true").lower() == "true"
 
@@ -37,14 +29,12 @@ if not API_KEY or not API_SECRET:
     sys.exit(1)
 
 
-# ---------------- امضای درخواست ----------------
 def sign(secret: str, timestamp: str, method: str, uri: str) -> str:
     payload = f"{timestamp}{method}{uri}"
     return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
 
 def request(method: str, uri: str, body: dict = None):
-    """uri باید با / شروع بشه، شامل querystring اگه لازم بود (مثلا /futures/positions)."""
     timestamp = str(int(time.time() * 1000))
     signature = sign(API_SECRET, timestamp, method.upper(), uri)
 
@@ -53,7 +43,7 @@ def request(method: str, uri: str, body: dict = None):
         "X-API-Key": API_KEY,
         "X-Timestamp": timestamp,
         "X-Signature": signature,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0",
         "Accept": "application/json",
     }
 
@@ -76,155 +66,181 @@ def request(method: str, uri: str, body: dict = None):
         return None
 
 
-# ---------------- state ----------------
+def fetch_dynamic_account_equity() -> float:
+    print("\n--- در حال استخراج پویای موجودی کل حساب از API ---")
+    
+    pos_res = request("GET", f"{FUTURES_PREFIX}/positions")
+    total_futures_equity = 0.0
+
+    if pos_res:
+        items = pos_res.get("items", []) if isinstance(pos_res, dict) else pos_res
+        active_positions = [p for p in items if isinstance(p, dict) and p.get("status") == "OPENED" and p.get("isActive")]
+        
+        for p in active_positions:
+            margin = float(p.get("initialMargin", 0))
+            if margin == 0:
+                notional = float(p.get("notionalSize", 0))
+                leverage = float(p.get("leverage", 1))
+                if leverage > 0:
+                    margin = notional / leverage
+
+            pnl = float(p.get("unrealizedPnL", 0))
+            total_futures_equity += (margin + pnl)
+
+        if total_futures_equity > 0:
+            print(f"موجودی پویا از بخش فیوچرز محاسبه شد: ${round(total_futures_equity, 4)}")
+
+    assets_res = request("GET", "/accounting/assets")
+    max_asset_val = 0.0
+
+    if assets_res and isinstance(assets_res, list):
+        for item in assets_res:
+            if isinstance(item, dict):
+                for key in ["equity", "balance", "walletBalance", "marginBalance", "availableBalance"]:
+                    if key in item and item[key] is not None:
+                        try:
+                            val = float(item[key])
+                            if val > max_asset_val and val > 0.01:
+                                max_asset_val = val
+                        except (ValueError, TypeError):
+                            pass
+
+    if max_asset_val > 0:
+        print(f"موجودی پویا از /accounting/assets دریافت شد: ${round(max_asset_val, 4)}")
+
+    final_equity = max(total_futures_equity, max_asset_val)
+
+    if final_equity > 0:
+        print(f"✅ موجودی کل نهایی حساب (Dynamic Equity): ${round(final_equity, 4)}\n")
+        return final_equity
+
+    print("❌ خطا: امکان دریافت پویا موجودی حساب وجود ندارد.")
+    return 0.0
+
+
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as e:
+            print(f"خطا در خواندن فایل state: {e}")
             return {}
     return {}
 
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
-
-
-# ---------------- منطق اصلی ----------------
-def get_futures_balance() -> float:
-    """
-    حالت دیباگ: چند تا endpoint/پارامتر مختلف رو امتحان می‌کنیم تا ببینیم
-    کدومش موجودی واقعی فیوچرز (که دستی تو اپ ۴.۰۴ دلار دیده شده) رو می‌ده.
-    """
-    candidates = [
-        ("GET", "/accounting/assets?walletType=futures"),
-        ("GET", "/accounting/assets?wallet=futures"),
-        ("GET", "/accounting/assets?type=futures"),
-        ("GET", "/futures/account"),
-        ("GET", "/futures/wallet"),
-        ("GET", "/futures/balance"),
-    ]
-
-    for method, uri in candidates:
-        print(f"\n--- تلاش: {method} {uri} ---")
-        result = request(method, uri)
-        print("پاسخ:", json.dumps(result, ensure_ascii=False)[:1000] if result is not None else "None/خطا")
-
-    print("\nهمه‌ی تلاش‌ها چاپ شد؛ هنوز موجودی قطعی انتخاب نشده (حالت دیباگ).")
-    return None
-
-
-def calc_stop_loss(entry_price: float, side: str, size: float, balance: float, risk_percent: float) -> float:
-    """
-    حد ضرر بر اساس درصدی از کل موجودی حساب (نه حجم یا قیمت معامله) محاسبه می‌شه:
-      ۱) مبلغ مجاز ریسک = موجودی کل × درصد ریسک
-      ۲) فاصله‌ی قیمتی حد ضرر = مبلغ مجاز ریسک ÷ حجم پوزیشن (size)
-    یعنی هر معامله، صرف‌نظر از لوریج یا حجمش، دقیقاً همون درصد از
-    کل حسابت رو به خطر می‌ندازه.
-    """
-    risk_money = balance * (risk_percent / 100.0)
-    if size <= 0:
-        return None
-    distance = risk_money / size
-    if side == "LONG":
-        return round(entry_price - distance, 8)
-    else:
-        return round(entry_price + distance, 8)
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        print(f"خطا در ذخیره فایل state: {e}")
 
 
 def main():
     state = load_state()
 
-    account_balance = get_futures_balance()
-    if account_balance is None:
-        print("نتونستم موجودی حساب رو بخونم. خروج.")
+    total_equity = fetch_dynamic_account_equity()
+
+    if total_equity <= 0:
+        print("به دلیل عدم موفقیت در دریافت موجودی از API، اجرای کد متوقف شد.")
         return
-    print(f"موجودی کل حساب فیوچرز: {account_balance}")
+
+    target_loss_usd = total_equity * (RISK_PERCENT / 100.0)
+    print(f"میزان زیان مجاز ({RISK_PERCENT}٪ از ${round(total_equity, 4)}): ${round(target_loss_usd, 4)}")
 
     response = request("GET", f"{FUTURES_PREFIX}/positions")
     if response is None:
-        print("نتونستم پوزیشن‌ها رو بخونم. خروج.")
+        print("عدم دریافت اطلاعات پوزیشن‌ها. خروج.")
         return
 
-    # پاسخ API صفحه‌بندی‌شده است: {"meta": {...}, "items": [...]}
     positions = response.get("items", []) if isinstance(response, dict) else response
-
-    open_positions = [p for p in positions if p.get("status") == "OPENED" and p.get("isActive")]
+    open_positions = [p for p in positions if isinstance(p, dict) and p.get("status") == "OPENED" and p.get("isActive")]
     print(f"تعداد پوزیشن‌های باز: {len(open_positions)}")
 
-    # --- قانون ۳: فقط یک پوزیشن باز ---
+    if not open_positions:
+        print("هیچ پوزیشن بازی یافت نشد.")
+        return
+
     if ONLY_ONE_TRADE and len(open_positions) > 1:
-        # قدیمی‌ترین (یا اولین در لیست) رو نگه می‌داریم، بقیه رو می‌بندیم
-        keep_id = open_positions[0]["id"]
+        open_positions.sort(key=lambda p: (p.get("createdAt", ""), p.get("id")))
+
+        oldest_position = open_positions[0]
+        oldest_id = oldest_position["id"]
+        print(f"قدیمی‌ترین پوزیشن نگه داشته شد: ID {oldest_id} ({oldest_position.get('symbol')})")
+
         for p in open_positions[1:]:
             pid = p["id"]
-            print(f"بستن پوزیشن اضافه {pid} طبق قانون «فقط یک معامله باز»")
+            print(f"بستن پوزیشن جدیدتر {pid} ({p.get('symbol')}) طبق قانون تک معامله")
             request("POST", f"{FUTURES_PREFIX}/positions/{pid}/close", {"orderType": "MARKET"})
-        # بعد از بستن، دوباره لیست رو به‌روز می‌کنیم
-        open_positions = [p for p in open_positions if p["id"] == keep_id]
+        
+        open_positions = [oldest_position]
 
     for p in open_positions:
         pid = str(p["id"])
         symbol = p["symbol"]
-        side = p["side"]  # "LONG" or "SHORT"
+        side = str(p["side"]).upper()
         entry_price = float(p["entryPrice"])
-        size = float(p["size"])
+        size = float(p.get("size", 0))
         current_sl = p.get("stopLoss")
+
+        if size <= 0:
+            print(f"حجم پوزیشن صفر یا نامعتبر است ({symbol}).")
+            continue
 
         key = pid
 
         if key not in state:
-            # پوزیشن تازه دیده شده: اگه حد ضرر نداره (یا صفره)، اجباری بذار
-            if current_sl is None or current_sl == "" or float(current_sl or 0) == 0:
-                new_sl = calc_stop_loss(entry_price, side, size, account_balance, RISK_PERCENT)
-                if new_sl is None:
-                    print(f"نتونستم حد ضرر {symbol} (id={pid}) رو محاسبه کنم (size نامعتبر).")
-                    continue
-                print(f"تنظیم حد ضرر اجباری {RISK_PERCENT}% برای {symbol} (id={pid}) روی {new_sl}")
+            if current_sl is None or str(current_sl).strip() == "" or float(current_sl or 0) == 0:
+                price_distance = target_loss_usd / size
+                
+                if side == "LONG":
+                    new_sl = round(entry_price - price_distance, 4)
+                else:
+                    new_sl = round(entry_price + price_distance, 4)
+
+                print(f"ثبت حد ضرر ۳٪ برای {symbol} روی قیمت: {new_sl} (مبلغ ریسک: ${round(target_loss_usd, 4)})")
+
                 result = request(
                     "PATCH",
                     f"{FUTURES_PREFIX}/positions/{pid}/tpsl",
                     {"stopLoss": str(new_sl), "stopLossOrderType": "STOP_MARKET"},
                 )
                 if result is not None:
+                    print(f"✅ حد ضرر با موفقیت روی {new_sl} ست شد.")
                     state[key] = {"symbol": symbol, "side": side, "sl": new_sl}
+                else:
+                    print(f"❌ خطا در ثبت حد ضرر از سمت صرافی.")
             else:
-                # حد ضرر از قبل تنظیم شده (مثلا دستی)؛ به‌عنوان مرجع ذخیره کن
                 state[key] = {"symbol": symbol, "side": side, "sl": float(current_sl)}
-                print(f"پوزیشن {symbol} (id={pid}) از قبل حد ضرر {current_sl} داشت؛ ذخیره شد.")
+                print(f"پوزیشن {symbol} از قبل حد ضرر {current_sl} داشت.")
         else:
-            # --- قانون ۲: قفل جابه‌جایی حد ضرر ---
             if LOCK_STOP_LOSS and current_sl:
-                original_sl = state[key]["sl"]
+                original_sl = float(state[key]["sl"])
                 current_sl_f = float(current_sl)
                 risk_increased = False
 
                 if side == "LONG":
-                    if current_sl_f < original_sl - 1e-8:
+                    if current_sl_f < original_sl - 1e-6:
                         risk_increased = True
                 else:
-                    if current_sl_f > original_sl + 1e-8:
+                    if current_sl_f > original_sl + 1e-6:
                         risk_increased = True
 
                 if risk_increased:
-                    print(f"افزایش ریسک شناسایی شد در {symbol} (id={pid}). برگردوندن حد ضرر به {original_sl}")
+                    print(f"⚠️ افزایش ریسک در {symbol}! بازگرداندن حد ضرر به {original_sl}")
                     request(
                         "PATCH",
                         f"{FUTURES_PREFIX}/positions/{pid}/tpsl",
                         {"stopLoss": str(original_sl), "stopLossOrderType": "STOP_MARKET"},
                     )
-                elif current_sl_f != original_sl:
-                    # جابه‌جایی به نفع معامله (تریلینگ) مجاز است
+                elif abs(current_sl_f - original_sl) > 1e-6:
                     print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد: {original_sl} -> {current_sl_f}")
                     state[key]["sl"] = current_sl_f
 
-    # پاک‌سازی state از پوزیشن‌های بسته‌شده
     open_ids = {str(p["id"]) for p in open_positions}
     for k in list(state.keys()):
         if k not in open_ids:
-            print(f"پوزیشن {k} دیگر باز نیست؛ از state حذف شد.")
             del state[k]
 
     save_state(state)
