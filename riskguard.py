@@ -95,43 +95,40 @@ def save_state(state):
 # ---------------- منطق اصلی ----------------
 def get_futures_balance() -> float:
     """
-    موجودی کل حساب فیوچرز رو می‌خونه. چون /accounting/assets بدون پارامتر
-    انگار کیف‌پول «funding» رو برمی‌گردونه (نه futures)، اول با
-    accountType=futures امتحان می‌کنیم؛ اگه نشد، از خود پوزیشن‌های باز
-    (initialMargin ها) به‌عنوان جایگزین استفاده می‌کنیم.
+    موجودی کل حساب فیوچرز رو می‌خونه. ممکنه چند رکورد USDT برای
+    کیف‌پول‌های مختلف (funding/futures) برگرده؛ همه رو چاپ می‌کنیم
+    و رکوردی که accountType=futures داره (یا در نبودش، بیشترین
+    موجودی) رو انتخاب می‌کنیم.
     """
-    # تلاش ۱: با پارامتر accountType=futures
-    assets = request("GET", "/accounting/assets?accountType=futures")
-    bal = _extract_usdt_balance(assets)
-    if bal is not None and bal > 0:
-        print(f"موجودی از /accounting/assets?accountType=futures: {bal}")
-        return bal
-
-    # تلاش ۲: بدون پارامتر (fallback)، چاپ کامل برای دیباگ
     assets = request("GET", "/accounting/assets")
-    print("پاسخ خام /accounting/assets (بدون پارامتر):", json.dumps(assets, ensure_ascii=False))
-    bal = _extract_usdt_balance(assets)
-    if bal is not None and bal > 0:
-        print(f"موجودی از /accounting/assets (بدون پارامتر): {bal}")
-        return bal
+    print("پاسخ خام /accounting/assets:", json.dumps(assets, ensure_ascii=False))
 
-    print("نتونستیم موجودی USDT فیوچرز معتبر (بزرگ‌تر از صفر) پیدا کنیم.")
-    return None
-
-
-def _extract_usdt_balance(assets):
-    if assets is None:
-        return None
     items = assets.get("items", assets) if isinstance(assets, dict) else assets
     if not isinstance(items, list):
+        print("ساختار پاسخ غیرمنتظره است.")
         return None
-    for a in items:
-        if a.get("asset") == "USDT":
-            try:
-                return float(a.get("availableBalance", a.get("balance", 0)))
-            except (TypeError, ValueError):
-                return None
-    return None
+
+    usdt_records = [a for a in items if a.get("asset") == "USDT"]
+    print(f"تعداد رکوردهای USDT پیدا شده: {len(usdt_records)}")
+    for r in usdt_records:
+        print("  رکورد:", json.dumps(r, ensure_ascii=False))
+
+    if not usdt_records:
+        print("هیچ رکورد USDT پیدا نشد.")
+        return None
+
+    # اول دنبال رکوردی با accountType=futures بگرد
+    for r in usdt_records:
+        if r.get("accountType") == "futures":
+            bal = float(r.get("availableBalance", r.get("balance", 0)))
+            print(f"رکورد futures پیدا شد، موجودی: {bal}")
+            return bal
+
+    # در نبودش، رکوردی با بیشترین موجودی رو انتخاب کن
+    best = max(usdt_records, key=lambda r: float(r.get("availableBalance", r.get("balance", 0)) or 0))
+    bal = float(best.get("availableBalance", best.get("balance", 0)))
+    print(f"رکورد futures مشخص نشد؛ رکورد با بیشترین موجودی انتخاب شد: {bal}")
+    return bal
 
 
 def calc_stop_loss(entry_price: float, side: str, size: float, balance: float, risk_percent: float) -> float:
