@@ -1,6 +1,6 @@
 """
 RiskGuard — ربات مدیریت ریسک، حد ضرر (۰.۵$) و حد سود (۲.۵$) حساب TrueTrade
-اجرای پیوسته و مداوم روی GitHub Actions
+اجرای پیوسته و مداوم روی GitHub Actions (اصلاح شده برای کنترل لحظه‌ای TP/SL)
 """
 
 import os
@@ -104,7 +104,7 @@ def run_riskguard_cycle(state):
     if not open_positions:
         return
 
-    # ۱. قانون تک معامله
+    # ۱. قانون تک معامله (نگه‌داشتن قدیمی‌ترین پوزیشن و بستن مابقی)
     if ONLY_ONE_TRADE and len(open_positions) > 1:
         open_positions.sort(key=lambda p: (p.get("createdAt", ""), p.get("id")))
 
@@ -119,7 +119,7 @@ def run_riskguard_cycle(state):
         
         open_positions = [oldest_position]
 
-    # ۲. تنظیم حد ضرر (۰.۵۰$) و حد سود (۲.۵۰$)
+    # ۲. بررسی و تنظیم پیوسته حد ضرر (۰.۵۰$) و حد سود (۲.۵۰$)
     for p in open_positions:
         pid = str(p["id"])
         symbol = p["symbol"]
@@ -132,6 +132,7 @@ def run_riskguard_cycle(state):
         if size <= 0:
             continue
 
+        # محاسبه فاصله‌های قیمتی استاندارد
         sl_distance = MAX_LOSS_USD / size
         tp_distance = MAX_PROFIT_USD / size
 
@@ -143,67 +144,66 @@ def run_riskguard_cycle(state):
             target_tp = round(entry_price - tp_distance, 4)
 
         key = pid
+        needs_update = False
+        payload = {"stopLossOrderType": "STOP_MARKET", "takeProfitOrderType": "TAKE_PROFIT_MARKET"}
 
+        # اگر برای بار اول است که پوزیشن را می‌بینیم
         if key not in state:
-            payload = {"stopLossOrderType": "STOP_MARKET", "takeProfitOrderType": "TAKE_PROFIT_MARKET"}
+            state[key] = {
+                "symbol": symbol,
+                "side": side,
+                "initial_sl": target_sl,
+                "initial_tp": target_tp,
+                "sl": target_sl,
+                "tp": target_tp
+            }
+
+        # چک کردن حد ضرر: اگر پاک شده بود یا ریسک بیشتر شده بود، اصلاح شود
+        if current_sl is None or str(current_sl).strip() == "" or float(current_sl or 0) == 0:
+            print(f"⚠️ حد ضرر {symbol} حذف شده بود! تنظیم مجدد روی {state[key]['sl']}")
+            payload["stopLoss"] = str(state[key]["sl"])
+            needs_update = True
+        elif LOCK_STOP_LOSS:
+            current_sl_f = float(current_sl)
+            saved_sl_f = float(state[key]["sl"])
             
-            if current_sl is None or str(current_sl).strip() == "" or float(current_sl or 0) == 0:
-                payload["stopLoss"] = str(target_sl)
-                print(f"ثبت حد ضرر ۵۰ سنتی برای {symbol} روی قیمت: {target_sl}")
+            # اگر حد ضرر طوری تغییر کرده که ریسک را افزایش می‌دهد
+            risk_increased = False
+            if side == "LONG" and current_sl_f < saved_sl_f - 1e-6:
+                risk_increased = True
+            elif side == "SHORT" and current_sl_f > saved_sl_f + 1e-6:
+                risk_increased = True
 
-            if current_tp is None or str(current_tp).strip() == "" or float(current_tp or 0) == 0:
-                payload["takeProfit"] = str(target_tp)
-                print(f"ثبت حد سود ۲.۵ دلاری برای {symbol} روی قیمت: {target_tp}")
+            if risk_increased:
+                print(f"⚠️ افزایش ریسک در {symbol}! بازگرداندن حد ضرر از {current_sl_f} به {saved_sl_f}")
+                payload["stopLoss"] = str(saved_sl_f)
+                needs_update = True
+            elif abs(current_sl_f - saved_sl_f) > 1e-6:
+                # اگر حد ضرر به نفع معامله (ریسک کمتر) جابه‌جا شد، آن را بپذیر
+                print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد: {saved_sl_f} -> {current_sl_f}")
+                state[key]["sl"] = current_sl_f
 
-            if "stopLoss" in payload or "takeProfit" in payload:
-                if "stopLoss" not in payload and current_sl:
-                    payload["stopLoss"] = str(current_sl)
-                if "takeProfit" not in payload and current_tp:
-                    payload["takeProfit"] = str(current_tp)
+        # چک کردن حد سود: اگر پاک شده بود، مجدداً ست شود
+        if current_tp is None or str(current_tp).strip() == "" or float(current_tp or 0) == 0:
+            print(f"⚠️ حد سود {symbol} حذف شده بود! تنظیم مجدد روی {state[key]['tp']}")
+            payload["takeProfit"] = str(state[key]["tp"])
+            needs_update = True
 
-                result = request("PATCH", f"{FUTURES_PREFIX}/positions/{pid}/tpsl", payload)
-                if result is not None:
-                    print(f"✅ TP/SL برای {symbol} با موفقیت ثبت شد.")
-                    state[key] = {
-                        "symbol": symbol,
-                        "side": side,
-                        "sl": float(payload.get("stopLoss", current_sl or target_sl)),
-                        "tp": float(payload.get("takeProfit", current_tp or target_tp))
-                    }
-                else:
-                    print(f"❌ خطا در ثبت TP/SL.")
+        # اگر نیاز به ارسال درخواست جدید برای اصلاح TP/SL بود
+        if needs_update:
+            # اگر یکی از پارامترها در payload نبود، مقدار فعلی آن ارسال شود تا متغیر دیگر دست‌نخورده بماند
+            if "stopLoss" not in payload:
+                payload["stopLoss"] = str(current_sl) if current_sl else str(state[key]["sl"])
+            if "takeProfit" not in payload:
+                payload["takeProfit"] = str(current_tp) if current_tp else str(state[key]["tp"])
+
+            result = request("PATCH", f"{FUTURES_PREFIX}/positions/{pid}/tpsl", payload)
+            if result is not None:
+                print(f"✅ اصلاح TP/SL برای {symbol} با موفقیت انجام شد.")
             else:
-                state[key] = {
-                    "symbol": symbol,
-                    "side": side,
-                    "sl": float(current_sl),
-                    "tp": float(current_tp)
-                }
-        else:
-            # قفل کردن حد ضرر جهت جلوگیری از افزایش ریسک
-            if LOCK_STOP_LOSS and current_sl:
-                original_sl = float(state[key]["sl"])
-                current_sl_f = float(current_sl)
-                risk_increased = False
+                print(f"❌ خطا در اصلاح TP/SL برای {symbol}.")
 
-                if side == "LONG":
-                    if current_sl_f < original_sl - 1e-6:
-                        risk_increased = True
-                else:
-                    if current_sl_f > original_sl + 1e-6:
-                        risk_increased = True
-
-                if risk_increased:
-                    print(f"⚠️ افزایش ریسک در {symbol}! بازگرداندن حد ضرر به {original_sl}")
-                    request(
-                        "PATCH",
-                        f"{FUTURES_PREFIX}/positions/{pid}/tpsl",
-                        {"stopLoss": str(original_sl), "stopLossOrderType": "STOP_MARKET"},
-                    )
-                elif abs(current_sl_f - original_sl) > 1e-6:
-                    print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد: {original_sl} -> {current_sl_f}")
-                    state[key]["sl"] = current_sl_f
-
+    # پاکسازی پوزیشن‌های بسته شده از حافظه
     open_ids = {str(p["id"]) for p in open_positions}
     for k in list(state.keys()):
         if k not in open_ids:
