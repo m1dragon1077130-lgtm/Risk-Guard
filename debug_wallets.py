@@ -1,5 +1,5 @@
 """
-debug_accounts.py — اسکن کامل اندپوینت‌های کیف‌پول و حساب‌های TrueTrade
+debug_transfer.py — اسکن اندپوینت‌های بخش Transfer و کیف‌پول‌ها
 """
 import os
 import sys
@@ -42,14 +42,12 @@ def request(method: str, uri: str):
         return f"Error: {e}"
 
 endpoints = [
-    "/accounting/assets",
+    "/accounting/transfer",
+    "/accounting/transfers",
+    "/accounting/transfer/accounts",
     "/accounting/wallet",
-    "/accounting/balances",
-    "/futures/account",
-    "/futures/balance",
-    "/futures/user",
     "/user/profile",
-    "/user/balances"
+    "/futures/account"
 ]
 
 for ep in endpoints:
