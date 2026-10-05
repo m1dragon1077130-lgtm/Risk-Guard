@@ -15,7 +15,7 @@ import urllib.error
 # ---------------- تنظیمات ثابت ریسک و سود ----------------
 MAX_LOSS_USD = 0.50         # حداکثر حد ضرر: ۵۰ سنت ($۰.۵۰)
 REWARD_RATIO = 5.0          # حد سود: ۵ برابر حد ضرر ($۲.۵۰)
-TRIGGER_RATIO = 2.0         # آستانه جابه‌‌جایی SL: ۲ برابر حد ضرر ($۱.۰۰ سود شناور)
+TRIGGER_RATIO = 2.0         # آستانه جابه‌جایی SL: ۲ برابر حد ضرر ($۱.۰۰ سود شناور)
 LOCK_PROFIT_RATIO = 1.0     # قفل سود: انتقال SL به ۱ برابر حد ضرر ($۰.۵۰ سود)
 
 # زمان‌بندی اجرای پیوسته روی گیتهاب اکشنز
@@ -118,7 +118,7 @@ def run_riskguard_cycle(state):
             pid = p["id"]
             print(f"بستن پوزیشن جدیدتر {pid} ({p.get('symbol')}) طبق قانون تک معامله")
             request("POST", f"{FUTURES_PREFIX}/positions/{pid}/close", {"orderType": "MARKET"})
-        
+
         open_positions = [oldest_position]
 
     # ۲. بررسی و مدیریت ریسک، حد ضرر، حد سود و قفل سود
@@ -138,16 +138,16 @@ def run_riskguard_cycle(state):
         # محاسبه فاصله‌های قیمتی
         sl_distance = MAX_LOSS_USD / size                          # فاصله ۰.۵۰$ (ریسک)
         tp_distance = (MAX_LOSS_USD * REWARD_RATIO) / size         # فاصله ۲.۵۰$ (۵ برابر ریسک)
-        lock_profit_distance = (MAX_LOSS_USD * LOCK_PROFIT_RATIO) / size # فاصله ۰.۵۰$ سود (۱ برابر ریسک)
+        lock_profit_distance = (MAX_LOSS_USD * LOCK_PROFIT_RATIO) / size  # فاصله ۰.۵۰$ سود (۱ برابر ریسک)
 
         if side == "LONG":
             target_sl = round(entry_price - sl_distance, 4)
             target_tp = round(entry_price + tp_distance, 4)
-            profit_sl_price = round(entry_price + lock_profit_distance, 4) # قیمت حد ضرر در سود R:R=1
+            profit_sl_price = round(entry_price + lock_profit_distance, 4)  # قیمت حد ضرر در سود R:R=1
         else:
             target_sl = round(entry_price + sl_distance, 4)
             target_tp = round(entry_price - tp_distance, 4)
-            profit_sl_price = round(entry_price - lock_profit_distance, 4) # قیمت حد ضرر در سود R:R=1
+            profit_sl_price = round(entry_price - lock_profit_distance, 4)  # قیمت حد ضرر در سود R:R=1
 
         key = pid
         needs_update = False
@@ -184,7 +184,7 @@ def run_riskguard_cycle(state):
             elif LOCK_STOP_LOSS:
                 current_sl_f = float(current_sl)
                 saved_sl_f = float(state[key]["sl"])
-                
+
                 risk_increased = False
                 if side == "LONG" and current_sl_f < saved_sl_f - 1e-6:
                     risk_increased = True
@@ -199,11 +199,20 @@ def run_riskguard_cycle(state):
                     print(f"حد ضرر {symbol} به نفع معامله جابه‌جا شد: {saved_sl_f} -> {current_sl_f}")
                     state[key]["sl"] = current_sl_f
 
-        # ۵. کنترل حد سود (تنظیم یا جایگزینی در صورت پاک شدن)
+        # ۵. کنترل حد سود: اگر حذف شده بود، یا از هدف ۵ برابر ریسک «دورتر» شده بود، برگردان.
+        #    اگر کمتر از هدف (نزدیک‌تر به ورودی) شده باشد، دست نمی‌زنیم.
+        target_tp_f = float(state[key]["tp"])
         if current_tp is None or str(current_tp).strip() == "" or float(current_tp or 0) == 0:
-            print(f"⚠️ حد سود {symbol} حذف شده بود! تنظیم مجدد روی ۵ برابر ریسک ({state[key]['tp']})")
-            payload["takeProfit"] = str(state[key]["tp"])
+            print(f"⚠️ حد سود {symbol} حذف شده بود! تنظیم مجدد روی ۵ برابر ریسک ({target_tp_f})")
+            payload["takeProfit"] = str(target_tp_f)
             needs_update = True
+        else:
+            current_tp_f = float(current_tp)
+            too_far = (current_tp_f > target_tp_f + 1e-6) if side == "LONG" else (current_tp_f < target_tp_f - 1e-6)
+            if too_far:
+                print(f"⚠️ حد سود {symbol} از هدف ۵ برابر ریسک دورتر شده بود ({current_tp_f}). بازگرداندن به {target_tp_f}")
+                payload["takeProfit"] = str(target_tp_f)
+                needs_update = True
 
         # اعمال تغییرات روی صرافی
         if needs_update:
