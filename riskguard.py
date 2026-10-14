@@ -15,7 +15,7 @@ import urllib.error
 # ---------------- تنظیمات ثابت ریسک و سود ----------------
 MAX_LOSS_USD = 1.0          # حداکثر حد ضرر: ۵۰ سنت ($۰.۵۰)
 REWARD_RATIO = 5.0          # حد سود: ۵ برابر حد ضرر ($۲.۵۰)
-TRIGGER_RATIO = 2.0         # آستانه جابه‌جایی SL: ۲ برابر حد ضرر ($۱.۰۰ سود شناور)
+TRIGGER_RATIO = 3.0         # آستانه جابه‌جایی SL: ۲ برابر حد ضرر ($۱.۰۰ سود شناور)
 LOCK_PROFIT_RATIO = 1.0     # قفل سود: انتقال SL به ۱ برابر حد ضرر ($۰.۵۰ سود)
 
 # زمان‌بندی اجرای پیوسته روی گیتهاب اکشنز
@@ -130,7 +130,7 @@ def run_riskguard_cycle(state):
         size = float(p.get("size", 0))
         current_sl = p.get("stopLoss")
         current_tp = p.get("takeProfit")
-        unrealized_pnl = float(p.get("unrealizedPnl", 0) or p.get("pnl", 0) or 0)
+        unrealized_pnl = float(p.get("unrealizedPnL", 0) or p.get("pnl", 0) or 0)
 
         if size <= 0:
             continue
