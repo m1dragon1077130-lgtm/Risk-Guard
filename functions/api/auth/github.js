@@ -2,6 +2,11 @@ export async function onRequest(context) {
   const { env, request } = context;
   
   const clientId = env.GITHUB_CLIENT_ID;
+  
+  if (!clientId) {
+    return new Response('Server error: GITHUB_CLIENT_ID not set', { status: 500 });
+  }
+  
   const origin = new URL(request.url).origin;
   const redirectUri = `${origin}/api/callback/github`;
   
@@ -16,11 +21,11 @@ export async function onRequest(context) {
   
   const githubUrl = `https://github.com/login/oauth/authorize?${params}`;
   
-  const response = Response.redirect(githubUrl, 302);
-  response.headers.append(
-    'Set-Cookie',
-    `oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=600; Path=/`
-  );
-  
-  return response;
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Location': githubUrl,
+      'Set-Cookie': `oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=600; Path=/`,
+    },
+  });
 }
