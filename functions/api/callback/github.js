@@ -6,17 +6,11 @@ export async function onRequest(context) {
   const error = url.searchParams.get('error');
   
   if (error) {
-    return new Response(null, {
-      status: 302,
-      headers: { 'Location': '/login.html?error=cancelled' },
-    });
+    return redirect('/login.html?error=cancelled');
   }
   
   if (!code || !state) {
-    return new Response(null, {
-      status: 302,
-      headers: { 'Location': '/login.html?error=invalid' },
-    });
+    return redirect('/login.html?error=invalid');
   }
   
   if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
@@ -40,10 +34,7 @@ export async function onRequest(context) {
     const tokenData = await tokenRes.json();
     
     if (!tokenData.access_token) {
-      return new Response(null, {
-        status: 302,
-        headers: { 'Location': '/login.html?error=token_failed' },
-      });
+      return redirect('/login.html?error=token_failed');
     }
     
     const userRes = await fetch('https://api.github.com/user', {
@@ -55,12 +46,40 @@ export async function onRequest(context) {
     
     const user = await userRes.json();
     
+    // ذخیره در Supabase
+    if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
+      try {
+        const sbRes = await fetch(`${env.SUPABASE_URL}/rest/v1/users?on_conflict=github_id`, {
+          method: 'POST',
+          headers: {
+            'apikey': env.SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=minimal',
+          },
+          body: JSON.stringify({
+            github_id: user.id,
+            github_username: user.login,
+            github_name: user.name || '',
+            github_avatar: user.avatar_url || '',
+            github_token: tokenData.access_token,
+          }),
+        });
+        
+        if (!sbRes.ok) {
+          const errText = await sbRes.text();
+          console.error('Supabase error:', errText);
+        }
+      } catch (dbErr) {
+        console.error('DB exception:', dbErr);
+      }
+    }
+    
     const sessionData = btoa(JSON.stringify({
       github_id: user.id,
       username: user.login,
       name: user.name,
       avatar: user.avatar_url,
-      token: tokenData.access_token,
     }));
     
     return new Response(null, {
@@ -74,4 +93,11 @@ export async function onRequest(context) {
   } catch (err) {
     return new Response(`Error: ${err.message}`, { status: 500 });
   }
+}
+
+function redirect(location) {
+  return new Response(null, {
+    status: 302,
+    headers: { 'Location': location },
+  });
 }
