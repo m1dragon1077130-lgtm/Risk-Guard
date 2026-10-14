@@ -122,6 +122,7 @@
       transition: 0.3s;
       pointer-events: none;
       max-width: 90%;
+      z-index: 9999;
     }
     .toast.show { opacity: 1; }
     .toast.error { background: #ef4444; }
@@ -214,7 +215,7 @@
             🚀 فعال‌سازی ربات
           </button>
           <p style="font-size: 12px; color: #64748b; margin-top: 15px; text-align: center;">
-            ⚠️ فقط دسترسی Read + Trade کافیه. هرگز Withdraw فعال نکن.
+            ⚠️ فقط دسترسی Readonly + Futures Trading کافیه. هرگز Withdrawal فعال نکن.
           </p>
         </div>
 
@@ -311,7 +312,7 @@
           showToast('❌ ' + (data.error || 'خطا'), true);
         }
       } catch (err) {
-        showToast('❌ خطا در اتصال', true);
+        showToast('❌ خطا در اتصال: ' + err.message, true);
       } finally {
         btn.disabled = false;
         btn.textContent = '🚀 فعال‌سازی ربات';
@@ -325,7 +326,7 @@
       
       setTimeout(() => {
         toast.className = 'toast';
-      }, 4000);
+      }, 5000);
     }
 
     function logout() {
