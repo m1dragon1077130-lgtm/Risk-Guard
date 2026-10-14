@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ورود - RiskGuard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Tahoma, sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .box {
+      background: rgba(30, 41, 59, 0.6);
+      padding: 50px 40px;
+      border-radius: 20px;
+      border: 1px solid #334155;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      font-size: 32px;
+      background: linear-gradient(135deg, #3b82f6, #22c55e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 35px;
+    }
+    .btn-github {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 15px;
+      background: #24292e;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      border: 1px solid #444d56;
+      transition: 0.2s;
+      cursor: pointer;
+    }
+    .btn-github:hover {
+      background: #2f363d;
+      transform: translateY(-2px);
+    }
+    .btn-github svg {
+      width: 22px;
+      height: 22px;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 25px 0;
+      color: #64748b;
+      font-size: 13px;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #334155;
+    }
+    .divider span {
+      padding: 0 12px;
+    }
+    .note {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 20px;
+      line-height: 1.6;
+    }
+    .back {
+      display: inline-block;
+      margin-top: 20px;
+      color: #3b82f6;
+      text-decoration: none;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🚀 RiskGuard</h1>
+    <p class="subtitle">ورود به پنل کاربری</p>
+
+    <a href="/api/auth/github" class="btn-github">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.69-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.9-.39.99 0 1.98.13 2.9.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.35.78 1.05.78 2.12v3.14c0 .31.21.68.79.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/>
+      </svg>
+      ورود با GitHub
+    </a>
+
+    <div class="divider"><span>به‌زودی</span></div>
+
+    <p class="note">
+      ورود با Google و شماره موبایل به‌زودی اضافه می‌شه.
+    </p>
+
+    <a href="/" class="back">← بازگشت به صفحه‌ی اصلی</a>
+  </div>
+</body>
+</html>
