@@ -27,32 +27,35 @@ export async function onRequest(context) {
   
   // ذخیره در Supabase
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
-    const sbRes = await fetch(`${env.SUPABASE_URL}/rest/v1/users`, {
-      method: 'POST',
-      headers: {
-        'apikey': env.SUPABASE_SERVICE_KEY,
-        'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates',
-      },
-      body: JSON.stringify({
-        github_id: user.id,
-        github_username: user.login,
-        github_name: user.name || '',
-        github_avatar: user.avatar_url || '',
-        github_token: tokenData.access_token,
-      }),
-    });
-    
-    const sbText = await sbRes.text();
-    console.log('SB status:', sbRes.status, 'Response:', sbText);
+    try {
+      await fetch(`${env.SUPABASE_URL}/rest/v1/users`, {
+        method: 'POST',
+        headers: {
+          'apikey': env.SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify({
+          github_id: user.id,
+          github_username: user.login,
+          github_name: user.name || '',
+          github_avatar: user.avatar_url || '',
+          github_token: tokenData.access_token,
+        }),
+      });
+    } catch (e) {
+      console.error('DB error:', e);
+    }
   }
   
+  // Session شامل توکن GitHub
   const sessionData = btoa(JSON.stringify({
     github_id: user.id,
     username: user.login,
     name: user.name,
     avatar: user.avatar_url,
+    gh_token: tokenData.access_token,
   }));
   
   return new Response(null, {
