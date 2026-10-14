@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>داشبورد - RiskGuard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Tahoma, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 800px; margin: auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+      background: #1e293b;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .header h1 { font-size: 24px; color: #3b82f6; }
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid #3b82f6;
+    }
+    .card {
+      background: #1e293b;
+      padding: 25px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      color: #94a3b8;
+    }
+    .status {
+      display: inline-block;
+      padding: 6px 14px;
+      background: #22c55e;
+      color: #fff;
+      border-radius: 20px;
+      font-size: 13px;
+    }
+    .form-group { margin-bottom: 20px; }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn:hover { background: #2563eb; }
+    .logout {
+      padding: 8px 16px;
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .logout:hover { background: #b91c1c; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 RiskGuard</h1>
+      <div class="user-info">
+        <span id="userName">...</span>
+        <img id="userAvatar" class="avatar" src="" alt="">
+        <button class="logout" onclick="logout()">خروج</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>وضعیت ربات</h2>
+      <span class="status" id="botStatus">⏳ در حال بررسی...</span>
+    </div>
+
+    <div class="card">
+      <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
+      
+      <div class="form-group">
+        <label>حداکثر ضرر هر معامله ($)</label>
+        <input type="number" id="maxLoss" value="1" step="0.5" min="0.5" max="10">
+      </div>
+
+      <div class="form-group">
+        <label>نسبت ریوارد</label>
+        <input type="number" id="reward" value="5" step="0.5" min="1" max="20">
+      </div>
+
+      <div class="form-group">
+        <label>آستانه قفل سود</label>
+        <input type="number" id="trigger" value="2" step="0.5" min="1" max="5">
+      </div>
+
+      <div class="form-group">
+        <label>قفل سود روی</label>
+        <input type="number" id="lock" value="1" step="0.1" min="0.5" max="3">
+      </div>
+
+      <button class="btn" onclick="saveConfig()">💾 ذخیره تنظیمات</button>
+    </div>
+
+    <div class="card">
+      <h2>🔑 اتصال به TheTrueTrade</h2>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" id="apiKey" placeholder="کلید API صرافی">
+      </div>
+      <div class="form-group">
+        <label>API Secret</label>
+        <input type="password" id="apiSecret" placeholder="API Secret">
+      </div>
+      <button class="btn" onclick="connectTTT()">اتصال</button>
+    </div>
+  </div>
+
+  <script>
+    // اطلاعات کاربر از Cookie
+    function getUser() {
+      const session = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('session='))
+        ?.split('=')[1];
+      
+      if (!session) {
+        window.location.href = '/login.html';
+        return null;
+      }
+      
+      try {
+        return JSON.parse(atob(session));
+      } catch {
+        window.location.href = '/login.html';
+        return null;
+      }
+    }
+
+    const user = getUser();
+    if (user) {
+      document.getElementById('userName').textContent = user.username;
+      document.getElementById('userAvatar').src = user.avatar;
+    }
+
+    function logout() {
+      document.cookie = 'session=; Max-Age=0; Path=/';
+      window.location.href = '/login.html';
+    }
+
+    function saveConfig() {
+      alert('به‌زودی...');
+    }
+
+    function connectTTT() {
+      alert('به‌زودی...');
+    }
+  </script>
+</body>
+</html>
