@@ -1,7 +1,8 @@
+import nacl from '../_lib/nacl.js';
+
 export async function onRequest(context) {
   const { env, request } = context;
   
-  // ۱. Session
   const cookies = request.headers.get('Cookie') || '';
   const sessionMatch = cookies.match(/session=([^;]+)/);
   
@@ -15,14 +16,13 @@ export async function onRequest(context) {
   }
   
   if (!sessionData.gh_token) {
-    return json({ error: 'GitHub token missing. Please login again.' }, 401);
+    return json({ error: 'GitHub token missing' }, 401);
   }
   
   if (request.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);
   }
   
-  // ۲. Body
   let body;
   try {
     body = await request.json();
@@ -40,7 +40,7 @@ export async function onRequest(context) {
   const username = sessionData.username;
   
   try {
-    // ۳. چک: مخزن riskguard وجود داره؟
+    // ۱. چک: مخزن riskguard وجود داره؟
     const checkRes = await fetch(
       `https://api.github.com/repos/${username}/riskguard`,
       {
@@ -52,8 +52,8 @@ export async function onRequest(context) {
       }
     );
     
-    // اگه وجود نداره، Fork کن
     if (checkRes.status === 404) {
+      // Fork کن
       const forkRes = await fetch(
         `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
         {
@@ -71,12 +71,10 @@ export async function onRequest(context) {
         return json({ error: 'Fork failed: ' + err }, 500);
       }
       
-      // صبر کن Fork کامل بشه
       await new Promise(r => setTimeout(r, 8000));
     }
     
-    // ۴. ذخیره‌ی Secrets
-    // اول کلید عمومی مخزن رو بگیر
+    // ۲. کلید عمومی مخزن رو بگیر
     const pkRes = await fetch(
       `https://api.github.com/repos/${username}/riskguard/actions/secrets/public-key`,
       {
@@ -94,14 +92,14 @@ export async function onRequest(context) {
     
     const pk = await pkRes.json();
     
-    // رمزنگاری و ذخیره‌ی هر Secret
+    // ۳. رمزنگاری و ذخیره‌ی هر Secret
     const secretsToSet = {
       TT_API_KEY: api_key,
       TT_API_SECRET: api_secret,
     };
     
     for (const [name, value] of Object.entries(secretsToSet)) {
-      const encrypted = await encryptSecret(value, pk.key);
+      const encrypted = encryptSecret(value, pk.key);
       
       const secretRes = await fetch(
         `https://api.github.com/repos/${username}/riskguard/actions/secrets/${name}`,
@@ -126,7 +124,7 @@ export async function onRequest(context) {
       }
     }
     
-    // ۵. فعال‌سازی Actions
+    // ۴. فعال‌سازی Actions
     await fetch(
       `https://api.github.com/repos/${username}/riskguard/actions/permissions`,
       {
@@ -144,7 +142,7 @@ export async function onRequest(context) {
       }
     );
     
-    // ۶. Trigger کردن Workflow
+    // ۵. Trigger کردن Workflow
     await new Promise(r => setTimeout(r, 3000));
     
     await fetch(
@@ -161,7 +159,7 @@ export async function onRequest(context) {
       }
     );
     
-    // ۷. آپدیت وضعیت در Supabase
+    // ۶. آپدیت وضعیت در Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(
         `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`,
@@ -191,49 +189,49 @@ export async function onRequest(context) {
   }
 }
 
+
 // ============================================================
-// رمزنگاری Secret با libsodium
+// رمزنگاری Secret با tweetnacl
 // ============================================================
-async function encryptSecret(secretValue, publicKeyBase64) {
-  // Decode public key
-  const publicKey = Uint8Array.from(atob(publicKeyBase64), c => c.charCodeAt(0));
-  const secretBytes = new TextEncoder().encode(secretValue);
+function encryptSecret(secretValue, publicKeyBase64) {
+  const publicKey = base64ToUint8(publicKeyBase64);
+  const message = new TextEncoder().encode(secretValue);
   
-  // استفاده از Web Crypto API (برای Workers)
-  // libsodium در Workers موجود نیست، پس باید از NaCl box استفاده کنیم
+  const ephemeralKeyPair = nacl.box.keyPair();
+  const nonce = nacl.randomBytes(24);
   
-  // راه‌حل: از tweetnacl استفاده کن
-  // ولی برای سادگی، از این ترفند استفاده می‌کنیم:
-  // Secret رو بدون رمزنگاری بفرست (GitHub اجباری نمی‌کنه)
-  // ⚠️ این امن نیست، ولی برای شروع کار می‌کنه
+  const encrypted = nacl.box(message, nonce, publicKey, ephemeralKeyPair.secretKey);
   
-  // ⚠️ نکته: GitHub از libsodium پشتیبانی می‌کنه، ولی Workers نمی‌تونه راحت استفاده کنه
-  // بهترین راه: از tweetnacl استفاده کن (باید در dependencies باشه)
+  const sealedBox = new Uint8Array(ephemeralKeyPair.publicKey.length + encrypted.length);
+  sealedBox.set(ephemeralKeyPair.publicKey, 0);
+  sealedBox.set(encrypted, ephemeralKeyPair.publicKey.length);
   
-  // راه‌حل قطعی: از REST API عمومی استفاده کن
-  // ولی الان، بذار ساده نگه داریم
-  
-  // ⚠️ موقت: از crypto_box_seal استفاده می‌کنیم
-  // ولی پیاده‌سازی NaCl box ساده نیست
-  
-  // راه‌حل جایگزین: Secret رو plain بفرست و GitHub قبول نمی‌کنه
-  // پس باید از API یه راه دیگه استفاده کنیم
-  
-  // ⚠️ برای حالا: از یه npm package استفاده نمی‌تونیم، پس ...
-  
-  // راه‌حل قطعی: از یه Worker دیگه استفاده کن که libsodium داشته باشه
-  
-  // ⚠️ موقتاً، یه روش ساده بذارم که کار کنه:
-  // از GitHub REST API V3، باید Secret رمزنگاری بشه
-  // ولی Workers نمی‌تونه راحت libsodium نصب کنه
-  
-  // بذار فعلاً این رو برگردونیم و بعداً حل کنیم
-  throw new Error('Secret encryption not implemented yet. Need libsodium.');
+  return uint8ToBase64(sealedBox);
 }
+
+
+function base64ToUint8(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+
+function uint8ToBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-            }
+    }
