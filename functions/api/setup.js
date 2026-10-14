@@ -1,5 +1,21 @@
 import nacl from '../_lib/nacl.js';
 
+const sealedBox = {
+  overheadLength: 48,
+  seal: function(message, publicKey) {
+    if (publicKey.length !== 32) throw new Error('bad public key size');
+    
+    const ephemeral = nacl.box.keyPair();
+    const nonce = new Uint8Array(24);
+    const encrypted = nacl.box(message, nonce, publicKey, ephemeral.secretKey);
+    
+    const result = new Uint8Array(32 + encrypted.length);
+    result.set(ephemeral.publicKey, 0);
+    result.set(encrypted, 32);
+    return result;
+  }
+};
+
 export async function onRequest(context) {
   const { env, request } = context;
   
@@ -15,13 +31,8 @@ export async function onRequest(context) {
     return json({ error: 'Invalid session' }, 401);
   }
   
-  if (!sessionData.gh_token) {
-    return json({ error: 'GitHub token missing' }, 401);
-  }
-  
-  if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
-  }
+  if (!sessionData.gh_token) return json({ error: 'GitHub token missing' }, 401);
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   
   let body;
   try {
@@ -31,10 +42,7 @@ export async function onRequest(context) {
   }
   
   const { api_key, api_secret } = body;
-  
-  if (!api_key || !api_secret) {
-    return json({ error: 'API Key و Secret الزامی هستن' }, 400);
-  }
+  if (!api_key || !api_secret) return json({ error: 'API Key و Secret الزامی هستن' }, 400);
   
   const ghToken = sessionData.gh_token;
   const username = sessionData.username;
@@ -62,9 +70,7 @@ export async function onRequest(context) {
         if (checkRes.status === 200) break;
       }
       
-      if (checkRes.status !== 200) {
-        return json({ error: 'Fork timeout' }, 500);
-      }
+      if (checkRes.status !== 200) return json({ error: 'Fork timeout' }, 500);
     }
     
     await new Promise(r => setTimeout(r, 5000));
@@ -74,9 +80,7 @@ export async function onRequest(context) {
       ghToken
     );
     
-    if (!pkRes.ok) {
-      return json({ error: 'Cannot get public key: ' + await pkRes.text() }, 500);
-    }
+    if (!pkRes.ok) return json({ error: 'Cannot get public key: ' + await pkRes.text() }, 500);
     
     const pk = await pkRes.json();
     
@@ -154,25 +158,13 @@ function ghFetch(url, token, method = 'GET', body = null) {
 function encryptSecret(secretValue, publicKeyBase64) {
   const publicKey = base64ToUint8(publicKeyBase64);
   const message = new TextEncoder().encode(secretValue);
-  
-  const ephemeralSecretKey = new Uint8Array(32);
-  crypto.getRandomValues(ephemeralSecretKey);
-  const ephemeralPublicKey = nacl.scalarMult.base(ephemeralSecretKey);
-  
-  const sharedKey = nacl.box.before(publicKey, ephemeralSecretKey);
-  
-  const nonce = new Uint8Array(24);
-  const ciphertext = nacl.secretbox(message, nonce, sharedKey);
-  
-  const output = new Uint8Array(32 + ciphertext.length);
-  output.set(ephemeralPublicKey, 0);
-  output.set(ciphertext, 32);
-  
-  return uint8ToBase64(output);
+  const encrypted = sealedBox.seal(message, publicKey);
+  return uint8ToBase64(encrypted);
 }
 
 function base64ToUint8(base64) {
-  const binary = atob(base64);
+  const normalized = base64.replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(normalized);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
@@ -189,4 +181,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-                                      }
+          }
