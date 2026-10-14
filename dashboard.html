@@ -53,7 +53,6 @@
       font-size: 13px;
     }
     .status.active { background: #22c55e; color: #fff; }
-    .status.inactive { background: #ef4444; color: #fff; }
     .status.pending { background: #f59e0b; color: #fff; }
     .logout {
       padding: 8px 16px;
@@ -76,6 +75,7 @@
       cursor: pointer;
       margin-top: 10px;
       transition: 0.2s;
+      width: 100%;
     }
     .btn:hover { background: #2563eb; }
     .btn:disabled { background: #475569; cursor: not-allowed; }
@@ -121,6 +121,7 @@
       opacity: 0;
       transition: 0.3s;
       pointer-events: none;
+      max-width: 90%;
     }
     .toast.show { opacity: 1; }
     .toast.error { background: #ef4444; }
@@ -181,8 +182,8 @@
         document.getElementById('userAvatar').src = u.avatar;
       }
       
-      const statusClass = u.has_paid ? 'active' : 'pending';
-      const statusText = u.has_paid ? '✅ فعال' : '⏳ در انتظار پرداخت';
+      const statusClass = u.is_active ? 'active' : 'pending';
+      const statusText = u.is_active ? '✅ فعال' : '⏳ غیرفعال';
       
       const config = u.config || {};
       
@@ -197,6 +198,24 @@
             <span class="info-label">تاریخ عضویت:</span>
             <span>${new Date(u.created_at).toLocaleDateString('fa')}</span>
           </div>
+        </div>
+
+        <div class="card">
+          <h2>🔑 اتصال به TheTrueTrade</h2>
+          <div class="form-group">
+            <label>API Key صرافی</label>
+            <input type="text" id="apiKey" placeholder="کلید API صرافی">
+          </div>
+          <div class="form-group">
+            <label>API Secret صرافی</label>
+            <input type="password" id="apiSecret" placeholder="API Secret">
+          </div>
+          <button class="btn" id="connectBtn" onclick="connectTTT()">
+            🚀 فعال‌سازی ربات
+          </button>
+          <p style="font-size: 12px; color: #64748b; margin-top: 15px; text-align: center;">
+            ⚠️ فقط دسترسی Read + Trade کافیه. هرگز Withdraw فعال نکن.
+          </p>
         </div>
 
         <div class="card">
@@ -217,20 +236,7 @@
             <input type="number" id="trigger" value="${config.trigger_ratio || 2}" step="0.5" min="1" max="5">
           </div>
           
-          <button class="btn" id="saveBtn" onclick="saveConfig()">💾 ذخیره</button>
-        </div>
-
-        <div class="card">
-          <h2>🔑 اتصال به TheTrueTrade</h2>
-          <div class="form-group">
-            <label>API Key</label>
-            <input type="text" id="apiKey" placeholder="کلید API صرافی">
-          </div>
-          <div class="form-group">
-            <label>API Secret</label>
-            <input type="password" id="apiSecret" placeholder="API Secret">
-          </div>
-          <button class="btn" onclick="alert('به‌زودی...')">اتصال</button>
+          <button class="btn" id="saveBtn" onclick="saveConfig()">💾 ذخیره تنظیمات</button>
         </div>
       `;
     }
@@ -266,7 +272,49 @@
         showToast('❌ خطا در اتصال', true);
       } finally {
         btn.disabled = false;
-        btn.textContent = '💾 ذخیره';
+        btn.textContent = '💾 ذخیره تنظیمات';
+      }
+    }
+
+    async function connectTTT() {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const apiSecret = document.getElementById('apiSecret').value.trim();
+      
+      if (!apiKey || !apiSecret) {
+        showToast('❌ API Key و Secret الزامی هستن', true);
+        return;
+      }
+      
+      const btn = document.getElementById('connectBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ در حال راه‌اندازی... (۱۵ ثانیه)';
+      
+      try {
+        const resp = await fetch('/api/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            api_secret: apiSecret,
+          }),
+        });
+        
+        const data = await resp.json();
+        
+        if (data.ok) {
+          showToast('✅ ربات با موفقیت فعال شد!');
+          document.getElementById('apiKey').value = '';
+          document.getElementById('apiSecret').value = '';
+          
+          setTimeout(() => window.location.reload(), 3000);
+        } else {
+          showToast('❌ ' + (data.error || 'خطا'), true);
+        }
+      } catch (err) {
+        showToast('❌ خطا در اتصال', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 فعال‌سازی ربات';
       }
     }
 
@@ -277,7 +325,7 @@
       
       setTimeout(() => {
         toast.className = 'toast';
-      }, 3000);
+      }, 4000);
     }
 
     function logout() {
