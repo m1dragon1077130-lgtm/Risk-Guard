@@ -154,13 +154,21 @@ function ghFetch(url, token, method = 'GET', body = null) {
 function encryptSecret(secretValue, publicKeyBase64) {
   const publicKey = base64ToUint8(publicKeyBase64);
   const message = new TextEncoder().encode(secretValue);
-  const ephemeralKeyPair = nacl.box.keyPair();
-  const nonce = nacl.randomBytes(24);
-  const encrypted = nacl.box(message, nonce, publicKey, ephemeralKeyPair.secretKey);
-  const sealedBox = new Uint8Array(ephemeralKeyPair.publicKey.length + encrypted.length);
-  sealedBox.set(ephemeralKeyPair.publicKey, 0);
-  sealedBox.set(encrypted, ephemeralKeyPair.publicKey.length);
-  return uint8ToBase64(sealedBox);
+  
+  const ephemeralSecretKey = new Uint8Array(32);
+  crypto.getRandomValues(ephemeralSecretKey);
+  const ephemeralPublicKey = nacl.scalarMult.base(ephemeralSecretKey);
+  
+  const sharedKey = nacl.box.before(publicKey, ephemeralSecretKey);
+  
+  const nonce = new Uint8Array(24);
+  const ciphertext = nacl.secretbox(message, nonce, sharedKey);
+  
+  const output = new Uint8Array(32 + ciphertext.length);
+  output.set(ephemeralPublicKey, 0);
+  output.set(ciphertext, 32);
+  
+  return uint8ToBase64(output);
 }
 
 function base64ToUint8(base64) {
@@ -181,4 +189,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-                 }
+                                      }
