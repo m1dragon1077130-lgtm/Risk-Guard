@@ -64,6 +64,7 @@
       cursor: pointer;
       font-size: 13px;
     }
+    .logout:hover { background: #b91c1c; }
     .btn {
       padding: 12px 24px;
       background: #3b82f6;
@@ -74,8 +75,10 @@
       font-weight: bold;
       cursor: pointer;
       margin-top: 10px;
+      transition: 0.2s;
     }
     .btn:hover { background: #2563eb; }
+    .btn:disabled { background: #475569; cursor: not-allowed; }
     .form-group { margin-bottom: 15px; }
     label {
       display: block;
@@ -91,6 +94,10 @@
       border-radius: 8px;
       font-size: 15px;
     }
+    input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
     .info-row {
       display: flex;
       justify-content: space-between;
@@ -101,6 +108,22 @@
     .info-row:last-child { border-bottom: none; }
     .info-label { color: #94a3b8; }
     .loading { text-align: center; padding: 40px; color: #94a3b8; }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #22c55e;
+      color: #fff;
+      padding: 15px 25px;
+      border-radius: 8px;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      opacity: 0;
+      transition: 0.3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: #ef4444; }
   </style>
 </head>
 <body>
@@ -118,6 +141,8 @@
       <div class="loading">⏳ در حال بارگذاری...</div>
     </div>
   </div>
+
+  <div id="toast" class="toast"></div>
 
   <script>
     let currentUser = null;
@@ -179,15 +204,20 @@
           
           <div class="form-group">
             <label>حداکثر ضرر هر معامله ($)</label>
-            <input type="number" id="maxLoss" value="${config.max_loss_usd || 1}" step="0.5" min="0.5">
+            <input type="number" id="maxLoss" value="${config.max_loss_usd || 1}" step="0.5" min="0.5" max="10">
           </div>
           
           <div class="form-group">
-            <label>نسبت ریوارد</label>
-            <input type="number" id="reward" value="${config.reward_ratio || 5}" step="0.5" min="1">
+            <label>نسبت ریوارد (چند برابر ریسک)</label>
+            <input type="number" id="reward" value="${config.reward_ratio || 5}" step="0.5" min="1" max="20">
           </div>
           
-          <button class="btn" onclick="saveConfig()">💾 ذخیره</button>
+          <div class="form-group">
+            <label>آستانه قفل سود</label>
+            <input type="number" id="trigger" value="${config.trigger_ratio || 2}" step="0.5" min="1" max="5">
+          </div>
+          
+          <button class="btn" id="saveBtn" onclick="saveConfig()">💾 ذخیره</button>
         </div>
 
         <div class="card">
@@ -205,8 +235,49 @@
       `;
     }
 
-    function saveConfig() {
-      alert('به‌زودی...');
+    async function saveConfig() {
+      const config = {
+        max_loss_usd: parseFloat(document.getElementById('maxLoss').value),
+        reward_ratio: parseFloat(document.getElementById('reward').value),
+        trigger_ratio: parseFloat(document.getElementById('trigger').value),
+        lock_profit_ratio: 1,
+        max_positions: 1,
+      };
+      
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ در حال ذخیره...';
+      
+      try {
+        const resp = await fetch('/api/user/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        });
+        
+        const data = await resp.json();
+        
+        if (data.ok) {
+          showToast('✅ تنظیمات ذخیره شد');
+        } else {
+          showToast('❌ ' + (data.error || 'خطا'), true);
+        }
+      } catch (err) {
+        showToast('❌ خطا در اتصال', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 ذخیره';
+      }
+    }
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      
+      setTimeout(() => {
+        toast.className = 'toast';
+      }, 3000);
     }
 
     function logout() {
