@@ -2,7 +2,6 @@ export async function onRequest(context) {
   const { env, request } = context;
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
-  const state = url.searchParams.get('state');
   const error = url.searchParams.get('error');
   
   if (error) return redirect('/login.html?error=cancelled');
@@ -26,32 +25,27 @@ export async function onRequest(context) {
   });
   const user = await userRes.json();
   
+  // ذخیره در Supabase
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
-    try {
-      const sbRes = await fetch(`${env.SUPABASE_URL}/rest/v1/users?on_conflict=github_id`, {
-        method: 'POST',
-        headers: {
-          'apikey': env.SUPABASE_SERVICE_KEY,
-          'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates,return=minimal',
-        },
-        body: JSON.stringify({
-          github_id: user.id,
-          github_username: user.login,
-          github_name: user.name || '',
-          github_avatar: user.avatar_url || '',
-          github_token: tokenData.access_token,
-        }),
-      });
-      
-      if (!sbRes.ok) {
-        const errText = await sbRes.text();
-        console.error('Supabase error:', sbRes.status, errText);
-      }
-    } catch (e) {
-      console.error('DB exception:', e);
-    }
+    const sbRes = await fetch(`${env.SUPABASE_URL}/rest/v1/users`, {
+      method: 'POST',
+      headers: {
+        'apikey': env.SUPABASE_SERVICE_KEY,
+        'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        github_id: user.id,
+        github_username: user.login,
+        github_name: user.name || '',
+        github_avatar: user.avatar_url || '',
+        github_token: tokenData.access_token,
+      }),
+    });
+    
+    const sbText = await sbRes.text();
+    console.log('SB status:', sbRes.status, 'Response:', sbText);
   }
   
   const sessionData = btoa(JSON.stringify({
