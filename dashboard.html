@@ -1,43 +1,158 @@
-<script>
-  async function checkAuth() {
-    try {
-      const resp = await fetch('/api/user/me');
-      const data = await resp.json();
-      
-      if (!data.logged_in) {
-        window.location.href = '/login.html';
-        return null;
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>داشبورد - RiskGuard</title>
+  <style>
+    body {
+      font-family: Tahoma, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+      background: #1e293b;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .header h1 { font-size: 24px; color: #3b82f6; margin: 0; }
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid #3b82f6;
+    }
+    .card {
+      background: #1e293b;
+      padding: 25px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: 18px;
+      margin-top: 0;
+      margin-bottom: 15px;
+      color: #94a3b8;
+    }
+    .status {
+      display: inline-block;
+      padding: 6px 14px;
+      background: #22c55e;
+      color: #fff;
+      border-radius: 20px;
+      font-size: 13px;
+    }
+    .logout {
+      padding: 8px 16px;
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn {
+      padding: 12px 24px;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .form-group { margin-bottom: 15px; }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 15px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 RiskGuard</h1>
+      <div class="user-info">
+        <span id="userName">...</span>
+        <img id="userAvatar" class="avatar" src="" alt="">
+        <button class="logout" onclick="logout()">خروج</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>وضعیت ربات</h2>
+      <span class="status">⏳ در حال راه‌اندازی</span>
+    </div>
+
+    <div class="card">
+      <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
+      <div class="form-group">
+        <label>حداکثر ضرر هر معامله ($)</label>
+        <input type="number" value="1" step="0.5">
+      </div>
+      <div class="form-group">
+        <label>نسبت ریوارد</label>
+        <input type="number" value="5" step="0.5">
+      </div>
+      <button class="btn" onclick="alert('به‌زودی...')">💾 ذخیره</button>
+    </div>
+  </div>
+
+  <script>
+    async function loadUser() {
+      try {
+        const resp = await fetch('/api/user/me');
+        const data = await resp.json();
+        
+        if (!data.logged_in) {
+          window.location.href = '/login.html';
+          return;
+        }
+        
+        document.getElementById('userName').textContent = data.user.username || 'کاربر';
+        if (data.user.avatar) {
+          document.getElementById('userAvatar').src = data.user.avatar;
+        }
+      } catch (err) {
+        console.error('Error:', err);
+        document.getElementById('userName').textContent = 'خطا در بارگذاری';
       }
-      
-      return data.user;
-    } catch (err) {
+    }
+
+    function logout() {
+      document.cookie = 'session=; Max-Age=0; Path=/';
       window.location.href = '/login.html';
-      return null;
     }
-  }
 
-  async function init() {
-    const user = await checkAuth();
-    if (!user) return;
-    
-    document.getElementById('userName').textContent = user.username || 'کاربر';
-    if (user.avatar) {
-      document.getElementById('userAvatar').src = user.avatar;
-    }
-  }
-
-  function logout() {
-    document.cookie = 'session=; Max-Age=0; Path=/';
-    window.location.href = '/login.html';
-  }
-
-  function saveConfig() {
-    alert('به‌زودی...');
-  }
-
-  function connectTTT() {
-    alert('به‌زودی...');
-  }
-
-  init();
-</script>
+    loadUser();
+  </script>
+</body>
+</html>
