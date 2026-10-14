@@ -5,18 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>داشبورد - RiskGuard</title>
   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: Tahoma, sans-serif;
       background: #0f172a;
       color: #e2e8f0;
       min-height: 100vh;
-      margin: 0;
       padding: 20px;
     }
-    .container {
-      max-width: 800px;
-      margin: auto;
-    }
+    .container { max-width: 800px; margin: auto; }
     .header {
       display: flex;
       justify-content: space-between;
@@ -46,18 +43,18 @@
     }
     .card h2 {
       font-size: 18px;
-      margin-top: 0;
       margin-bottom: 15px;
       color: #94a3b8;
     }
     .status {
       display: inline-block;
       padding: 6px 14px;
-      background: #22c55e;
-      color: #fff;
       border-radius: 20px;
       font-size: 13px;
     }
+    .status.active { background: #22c55e; color: #fff; }
+    .status.inactive { background: #ef4444; color: #fff; }
+    .status.pending { background: #f59e0b; color: #fff; }
     .logout {
       padding: 8px 16px;
       background: #dc2626;
@@ -78,6 +75,7 @@
       cursor: pointer;
       margin-top: 10px;
     }
+    .btn:hover { background: #2563eb; }
     .form-group { margin-bottom: 15px; }
     label {
       display: block;
@@ -92,8 +90,17 @@
       color: #fff;
       border-radius: 8px;
       font-size: 15px;
-      box-sizing: border-box;
     }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #334155;
+      font-size: 14px;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #94a3b8; }
+    .loading { text-align: center; padding: 40px; color: #94a3b8; }
   </style>
 </head>
 <body>
@@ -107,44 +114,99 @@
       </div>
     </div>
 
-    <div class="card">
-      <h2>وضعیت ربات</h2>
-      <span class="status">⏳ در حال راه‌اندازی</span>
-    </div>
-
-    <div class="card">
-      <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
-      <div class="form-group">
-        <label>حداکثر ضرر هر معامله ($)</label>
-        <input type="number" value="1" step="0.5">
-      </div>
-      <div class="form-group">
-        <label>نسبت ریوارد</label>
-        <input type="number" value="5" step="0.5">
-      </div>
-      <button class="btn" onclick="alert('به‌زودی...')">💾 ذخیره</button>
+    <div id="content">
+      <div class="loading">⏳ در حال بارگذاری...</div>
     </div>
   </div>
 
   <script>
-    async function loadUser() {
+    let currentUser = null;
+
+    async function loadProfile() {
       try {
-        const resp = await fetch('/api/user/me');
-        const data = await resp.json();
+        const resp = await fetch('/api/user/profile');
         
-        if (!data.logged_in) {
+        if (resp.status === 401) {
           window.location.href = '/login.html';
           return;
         }
         
-        document.getElementById('userName').textContent = data.user.username || 'کاربر';
-        if (data.user.avatar) {
-          document.getElementById('userAvatar').src = data.user.avatar;
+        const data = await resp.json();
+        
+        if (!data.ok) {
+          document.getElementById('content').innerHTML =
+            `<div class="card" style="color:#ef4444">❌ خطا: ${data.error}</div>`;
+          return;
         }
+        
+        currentUser = data.user;
+        renderDashboard();
+        
       } catch (err) {
-        console.error('Error:', err);
-        document.getElementById('userName').textContent = 'خطا در بارگذاری';
+        document.getElementById('content').innerHTML =
+          `<div class="card" style="color:#ef4444">❌ خطا در اتصال</div>`;
       }
+    }
+
+    function renderDashboard() {
+      const u = currentUser;
+      
+      document.getElementById('userName').textContent = u.username || 'کاربر';
+      if (u.avatar) {
+        document.getElementById('userAvatar').src = u.avatar;
+      }
+      
+      const statusClass = u.has_paid ? 'active' : 'pending';
+      const statusText = u.has_paid ? '✅ فعال' : '⏳ در انتظار پرداخت';
+      
+      const config = u.config || {};
+      
+      document.getElementById('content').innerHTML = `
+        <div class="card">
+          <h2>📊 وضعیت حساب</h2>
+          <div class="info-row">
+            <span class="info-label">وضعیت:</span>
+            <span class="status ${statusClass}">${statusText}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">تاریخ عضویت:</span>
+            <span>${new Date(u.created_at).toLocaleDateString('fa')}</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
+          
+          <div class="form-group">
+            <label>حداکثر ضرر هر معامله ($)</label>
+            <input type="number" id="maxLoss" value="${config.max_loss_usd || 1}" step="0.5" min="0.5">
+          </div>
+          
+          <div class="form-group">
+            <label>نسبت ریوارد</label>
+            <input type="number" id="reward" value="${config.reward_ratio || 5}" step="0.5" min="1">
+          </div>
+          
+          <button class="btn" onclick="saveConfig()">💾 ذخیره</button>
+        </div>
+
+        <div class="card">
+          <h2>🔑 اتصال به TheTrueTrade</h2>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="text" id="apiKey" placeholder="کلید API صرافی">
+          </div>
+          <div class="form-group">
+            <label>API Secret</label>
+            <input type="password" id="apiSecret" placeholder="API Secret">
+          </div>
+          <button class="btn" onclick="alert('به‌زودی...')">اتصال</button>
+        </div>
+      `;
+    }
+
+    function saveConfig() {
+      alert('به‌زودی...');
     }
 
     function logout() {
@@ -152,7 +214,7 @@
       window.location.href = '/login.html';
     }
 
-    loadUser();
+    loadProfile();
   </script>
 </body>
 </html>
