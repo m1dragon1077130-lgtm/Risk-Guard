@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-  <html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -223,18 +223,28 @@
           <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
           
           <div class="form-group">
-            <label>حداکثر ضرر هر معامله ($)</label>
+            <label>💰 حداکثر ضرر هر معامله ($)</label>
             <input type="number" id="maxLoss" value="${config.max_loss_usd || 1}" step="0.5" min="0.5" max="10">
           </div>
           
           <div class="form-group">
-            <label>نسبت ریوارد (چند برابر ریسک)</label>
+            <label>🎯 حداکثر ریوارد (چند برابر ریسک)</label>
             <input type="number" id="reward" value="${config.reward_ratio || 5}" step="0.5" min="1" max="20">
           </div>
           
           <div class="form-group">
-            <label>آستانه قفل سود</label>
-            <input type="number" id="trigger" value="${config.trigger_ratio || 2}" step="0.5" min="1" max="5">
+            <label>🔒 وقتی سود به این مقدار رسید (چند برابر ریسک)</label>
+            <input type="number" id="trigger" value="${config.trigger_ratio || 2}" step="0.5" min="1" max="10">
+          </div>
+          
+          <div class="form-group">
+            <label>🛡 حد ضرر به این مقدار منتقل بشه (چند برابر ریسک)</label>
+            <input type="number" id="lock" value="${config.lock_profit_ratio || 1}" step="0.5" min="0.5" max="5">
+          </div>
+          
+          <div class="form-group">
+            <label>📊 حداکثر معاملات همزمان</label>
+            <input type="number" id="maxPos" value="${config.max_positions || 1}" step="1" min="1" max="5">
           </div>
           
           <button class="btn" id="saveBtn" onclick="saveConfig()">💾 ذخیره تنظیمات</button>
@@ -247,8 +257,8 @@
         max_loss_usd: parseFloat(document.getElementById('maxLoss').value),
         reward_ratio: parseFloat(document.getElementById('reward').value),
         trigger_ratio: parseFloat(document.getElementById('trigger').value),
-        lock_profit_ratio: 1,
-        max_positions: 1,
+        lock_profit_ratio: parseFloat(document.getElementById('lock').value),
+        max_positions: parseInt(document.getElementById('maxPos').value),
       };
       
       const btn = document.getElementById('saveBtn');
