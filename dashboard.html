@@ -35,6 +35,15 @@
       border-radius: 50%;
       border: 2px solid #3b82f6;
     }
+    .logout {
+      padding: 8px 16px;
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
     .card {
       background: #1e293b;
       padding: 25px;
@@ -54,16 +63,6 @@
     }
     .status.active { background: #22c55e; color: #fff; }
     .status.pending { background: #f59e0b; color: #fff; }
-    .logout {
-      padding: 8px 16px;
-      background: #dc2626;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .logout:hover { background: #b91c1c; }
     .btn {
       padding: 12px 24px;
       background: #3b82f6;
@@ -78,7 +77,14 @@
       width: 100%;
     }
     .btn:hover { background: #2563eb; }
-    .btn:disabled { background: #475569; cursor: not-allowed; }
+    .btn:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
+    .btn-success { background: #22c55e; }
+    .btn-success:hover { background: #16a34a; }
+    .btn-referral {
+      background: #f59e0b;
+      color: #fff;
+    }
+    .btn-referral:hover { background: #d97706; }
     .form-group { margin-bottom: 15px; }
     label {
       display: block;
@@ -126,6 +132,65 @@
     }
     .toast.show { opacity: 1; }
     .toast.error { background: #ef4444; }
+    .referral-box {
+      background: linear-gradient(135deg, #78350f, #b45309);
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .referral-box h3 {
+      color: #fff;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    .referral-box p {
+      color: #fef3c7;
+      font-size: 13px;
+      margin-bottom: 15px;
+      line-height: 1.6;
+    }
+    .discount-badge {
+      display: inline-block;
+      background: #22c55e;
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+    .price-box {
+      text-align: center;
+      padding: 20px;
+      background: #0f172a;
+      border-radius: 10px;
+      margin-top: 15px;
+    }
+    .price-old {
+      text-decoration: line-through;
+      color: #64748b;
+      font-size: 20px;
+      margin-bottom: 5px;
+    }
+    .price-new {
+      font-size: 32px;
+      font-weight: bold;
+      color: #22c55e;
+    }
+    .price-toman {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-top: 5px;
+    }
+    .locked-notice {
+      background: #7f1d1d;
+      color: #fca5a5;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: center;
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 <body>
@@ -185,8 +250,16 @@
       
       const statusClass = u.is_active ? 'active' : 'pending';
       const statusText = u.is_active ? '✅ فعال' : '⏳ غیرفعال';
-      
       const config = u.config || {};
+      
+      // چک رفرال
+      const referralClicked = u.referral_clicked || false;
+      const referralConfirmed = u.referral_confirmed || false;
+      const hasDiscount = referralConfirmed;
+      const price = hasDiscount ? 10 : 20;
+      
+      // اگه فعاله → بخش‌های پرداخت و رفرال رو نشون نده
+      const isActive = u.is_active;
       
       document.getElementById('content').innerHTML = `
         <div class="card">
@@ -199,8 +272,86 @@
             <span class="info-label">تاریخ عضویت:</span>
             <span>${new Date(u.created_at).toLocaleDateString('fa')}</span>
           </div>
+          ${hasDiscount ? `
+          <div class="info-row">
+            <span class="info-label">تخفیف:</span>
+            <span class="discount-badge">🎁 ۵۰٪ تخفیف فعال</span>
+          </div>
+          ` : ''}
         </div>
 
+        ${!isActive ? `
+        <div class="card">
+          <h2>🎁 تخفیف ۵۰٪ با لینک رفرال</h2>
+          
+          <div class="referral-box">
+            <h3>مرحله ۱: ثبت‌نام در TheTrueTrade</h3>
+            <p>
+              برای دریافت تخفیف ۵۰٪، ابتدا از لینک زیر در TheTrueTrade ثبت‌نام کن.
+            </p>
+            <a href="https://www.thetruetrade.io/r/747327" 
+               target="_blank"
+               class="btn btn-referral"
+               onclick="onReferralClick()"
+               ${referralClicked ? 'style="opacity:0.5;pointer-events:none"' : ''}>
+              ${referralClicked ? '✅ کلیک کردی' : '📝 ثبت‌نام در TTT'}
+            </a>
+          </div>
+          
+          <div class="referral-box" style="background: linear-gradient(135deg, #1e3a8a, #1e40af);">
+            <h3>مرحله ۲: تایید ثبت‌نام</h3>
+            <p>
+              بعد از ثبت‌نام در TTT، روی دکمه زیر بزن تا تخفیف فعال بشه.
+            </p>
+            <button 
+              class="btn ${referralClicked && !referralConfirmed ? 'btn-success' : ''}"
+              onclick="confirmReferral()"
+              ${!referralClicked || referralConfirmed ? 'disabled' : ''}>
+              ${referralConfirmed ? '✅ تخفیف فعال شد' : '✅ ثبت‌نام کردم'}
+            </button>
+          </div>
+          
+          ${referralConfirmed ? `
+          <div class="price-box">
+            <div class="price-old">$20</div>
+            <div class="price-new">$10</div>
+            <div class="price-toman">۵۰٪ تخفیف اعمال شد</div>
+          </div>
+          ` : `
+          <div class="price-box">
+            <div class="price-new" style="color:#f59e0b">$20</div>
+            <div class="price-toman">قیمت اصلی (بدون تخفیف)</div>
+          </div>
+          `}
+        </div>
+        ` : ''}
+
+        ${!isActive ? `
+        <div class="card">
+          <h2>💳 پرداخت و فعال‌سازی</h2>
+          ${!referralConfirmed ? `
+            <div class="locked-notice">
+              🔒 برای فعال‌سازی ربات، ابتدا از لینک رفرال بالا ثبت‌نام کن و دکمه‌ی تایید رو بزن.
+            </div>
+          ` : ''}
+          <button 
+            class="btn" 
+            onclick="startPayment()"
+            ${!referralConfirmed ? 'disabled' : ''}>
+            💳 پرداخت $${price} و فعال‌سازی
+          </button>
+          <p style="font-size: 12px; color: #64748b; margin-top: 15px; text-align: center;">
+            (به‌زودی - در حال راه‌اندازی درگاه پرداخت)
+          </p>
+        </div>
+        ` : ''}
+
+        ${isActive ? `
+        <div class="card">
+          <h2>🔑 اتصال به TheTrueTrade</h2>
+          <p style="color: #22c55e; margin-bottom: 15px;">✅ ربات شما فعال است</p>
+        </div>
+        ` : `
         <div class="card">
           <h2>🔑 اتصال به TheTrueTrade</h2>
           <div class="form-group">
@@ -211,14 +362,20 @@
             <label>API Secret صرافی</label>
             <input type="password" id="apiSecret" placeholder="API Secret">
           </div>
-          <button class="btn" id="connectBtn" onclick="connectTTT()">
+          <button 
+            class="btn" 
+            id="connectBtn" 
+            onclick="connectTTT()"
+            ${!referralConfirmed ? 'disabled' : ''}>
             🚀 فعال‌سازی ربات
           </button>
           <p style="font-size: 12px; color: #64748b; margin-top: 15px; text-align: center;">
             ⚠️ فقط دسترسی Readonly + Futures Trading کافیه. هرگز Withdrawal فعال نکن.
           </p>
         </div>
+        `}
 
+        ${isActive ? `
         <div class="card">
           <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
           
@@ -249,7 +406,52 @@
           
           <button class="btn" id="saveBtn" onclick="saveConfig()">💾 ذخیره تنظیمات</button>
         </div>
+        ` : ''}
       `;
+    }
+
+    // ثبت کلیک روی لینک رفرال
+    async function onReferralClick() {
+      // ارسال به سرور که کاربر کلیک کرده
+      try {
+        await fetch('/api/user/referral-click', {
+          method: 'POST',
+        });
+      } catch (err) {
+        console.error('Referral click error:', err);
+      }
+      
+      // بعد از ۳ ثانیه صفحه رو رفرش کن
+      setTimeout(() => window.location.reload(), 3000);
+    }
+
+    // تایید ثبت‌نام
+    async function confirmReferral() {
+      if (!confirm('آیا مطمئنی که در TheTrueTrade از لینک ما ثبت‌نام کردی؟')) {
+        return;
+      }
+      
+      try {
+        const resp = await fetch('/api/user/referral-confirm', {
+          method: 'POST',
+        });
+        
+        const data = await resp.json();
+        
+        if (data.ok) {
+          showToast('✅ تخفیف ۵۰٪ فعال شد!');
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          showToast('❌ ' + (data.error || 'خطا'), true);
+        }
+      } catch (err) {
+        showToast('❌ خطا در اتصال', true);
+      }
+    }
+
+    // شروع پرداخت
+    function startPayment() {
+      showToast('⏳ در حال راه‌اندازی درگاه پرداخت...');
     }
 
     async function saveConfig() {
