@@ -137,35 +137,73 @@ export async function onRequest(context) {
           );
           
           if (!updateRes.ok) {
-            const errText = await updateRes.text();
-            console.error('GitHub config update failed:', errText);
-            return json({ 
-              ok: true, 
-              config,
-              warning: 'تنظیمات در دیتابیس ذخیره شد ولی در GitHub آپدیت نشد'
-            });
+            console.error('GitHub config update failed:', await updateRes.text());
           }
-          
-          // ۳. Trigger کردن Workflow برای اعمال تنظیمات جدید
-          await new Promise(r => setTimeout(r, 2000));
-          
-          await fetch(
-            `https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `token ${ghToken}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'RiskGuard',
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ ref: 'main' }),
-            }
-          );
         }
       } catch (ghErr) {
         console.error('GitHub update error:', ghErr);
-        // ادامه می‌دیم — Supabase ذخیره شده
+      }
+      
+      // ۳. Cancel کردن همه‌ی Workflowهای در حال اجرا
+      try {
+        const runsRes = await fetch(
+          `https://api.github.com/repos/${repo}/actions/runs?status=in_progress&per_page=20`,
+          {
+            headers: {
+              'Authorization': `token ${ghToken}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'RiskGuard',
+            },
+          }
+        );
+        
+        if (runsRes.ok) {
+          const runsData = await runsRes.json();
+          const runs = runsData.workflow_runs || [];
+          
+          console.log(`Found ${runs.length} in-progress workflows. Canceling...`);
+          
+          for (const run of runs) {
+            await fetch(
+              `https://api.github.com/repos/${repo}/actions/runs/${run.id}/cancel`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `token ${ghToken}`,
+                  'Accept': 'application/vnd.github.v3+json',
+                  'User-Agent': 'RiskGuard',
+                },
+              }
+            );
+            console.log(`Canceled run #${run.id}`);
+          }
+        }
+        
+        // ۵ ثانیه صبر کن تا Cancel کامل بشه
+        await new Promise(r => setTimeout(r, 5000));
+        
+      } catch (cancelErr) {
+        console.error('Cancel error:', cancelErr);
+      }
+      
+      // ۴. Trigger کردن Workflow جدید
+      try {
+        await fetch(
+          `https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `token ${ghToken}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'RiskGuard',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ref: 'main' }),
+          }
+        );
+        console.log('Triggered new workflow');
+      } catch (triggerErr) {
+        console.error('Trigger error:', triggerErr);
       }
     }
     
@@ -181,4 +219,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-                }
+}
