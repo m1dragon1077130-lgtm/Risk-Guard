@@ -73,69 +73,99 @@ export async function onRequest(context) {
       return json({ error: 'DB error: ' + errText }, 500);
     }
     
-    // ۲. آپدیت config.json توی مخزن کاربر
+    // ۲. آپدیت config.json توی مخزن GitHub کاربر
     const ghToken = sessionData.gh_token;
     const username = sessionData.username;
     const repo = `${username}/riskguard`;
     
     if (ghToken && username) {
-      // SHA فایل فعلی
-      const configFileRes = await fetch(
-        `https://api.github.com/repos/${repo}/contents/config.json`,
-        {
-          headers: {
-            'Authorization': `token ${ghToken}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'RiskGuard',
-          },
-        }
-      );
-      
-      if (configFileRes.ok) {
-        const configData = await configFileRes.json();
-        const sha = configData.sha;
-        
-        // محتوای جدید (با حفظ API Key)
-        let existingConfig = {};
-        try {
-          const decoded = decodeURIComponent(escape(atob(configData.content)));
-          existingConfig = JSON.parse(decoded);
-        } catch {}
-        
-        const newConfig = {
-          ...existingConfig,
-          max_loss_usd: config.max_loss_usd,
-          reward_ratio: config.reward_ratio,
-          trigger_ratio: config.trigger_ratio,
-          lock_profit_ratio: config.lock_profit_ratio,
-          max_positions: config.max_positions,
-        };
-        
-        const configStr = JSON.stringify(newConfig, null, 2);
-        const contentB64 = btoa(unescape(encodeURIComponent(configStr)));
-        
-        // آپدیت فایل
-        const updateRes = await fetch(
+      try {
+        // SHA فایل فعلی
+        const configFileRes = await fetch(
           `https://api.github.com/repos/${repo}/contents/config.json`,
           {
-            method: 'PUT',
             headers: {
               'Authorization': `token ${ghToken}`,
               'Accept': 'application/vnd.github.v3+json',
               'User-Agent': 'RiskGuard',
-              'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              message: 'Update config',
-              content: contentB64,
-              sha: sha,
-            }),
           }
         );
         
-        if (!updateRes.ok) {
-          console.error('GitHub config update failed:', await updateRes.text());
+        if (configFileRes.ok) {
+          const configData = await configFileRes.json();
+          const sha = configData.sha;
+          
+          // محتوای جدید (با حفظ API Key)
+          let existingConfig = {};
+          try {
+            const decoded = decodeURIComponent(escape(atob(configData.content)));
+            existingConfig = JSON.parse(decoded);
+          } catch (e) {
+            console.error('Parse existing config error:', e);
+          }
+          
+          const newConfig = {
+            ...existingConfig,
+            max_loss_usd: config.max_loss_usd,
+            reward_ratio: config.reward_ratio,
+            trigger_ratio: config.trigger_ratio,
+            lock_profit_ratio: config.lock_profit_ratio,
+            max_positions: config.max_positions,
+          };
+          
+          const configStr = JSON.stringify(newConfig, null, 2);
+          const contentB64 = btoa(unescape(encodeURIComponent(configStr)));
+          
+          // آپدیت فایل
+          const updateRes = await fetch(
+            `https://api.github.com/repos/${repo}/contents/config.json`,
+            {
+              method: 'PUT',
+              headers: {
+                'Authorization': `token ${ghToken}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'RiskGuard',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                message: 'Update config settings',
+                content: contentB64,
+                sha: sha,
+              }),
+            }
+          );
+          
+          if (!updateRes.ok) {
+            const errText = await updateRes.text();
+            console.error('GitHub config update failed:', errText);
+            return json({ 
+              ok: true, 
+              config,
+              warning: 'تنظیمات در دیتابیس ذخیره شد ولی در GitHub آپدیت نشد'
+            });
+          }
+          
+          // ۳. Trigger کردن Workflow برای اعمال تنظیمات جدید
+          await new Promise(r => setTimeout(r, 2000));
+          
+          await fetch(
+            `https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `token ${ghToken}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'RiskGuard',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ ref: 'main' }),
+            }
+          );
         }
+      } catch (ghErr) {
+        console.error('GitHub update error:', ghErr);
+        // ادامه می‌دیم — Supabase ذخیره شده
       }
     }
     
@@ -151,4 +181,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
+                }
