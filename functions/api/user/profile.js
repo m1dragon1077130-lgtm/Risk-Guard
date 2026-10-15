@@ -1,7 +1,6 @@
 export async function onRequest(context) {
   const { env, request } = context;
   
-  // ۱. Session
   const cookies = request.headers.get('Cookie') || '';
   const sessionMatch = cookies.match(/session=([^;]+)/);
   
@@ -16,12 +15,10 @@ export async function onRequest(context) {
     return json({ error: 'Invalid session' }, 401);
   }
   
-  // ۲. چک env
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
     return json({ error: 'Server config error' }, 500);
   }
   
-  // ۳. کاربر رو از Supabase بگیر
   try {
     const sbRes = await fetch(
       `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}&select=*`,
@@ -52,9 +49,11 @@ export async function onRequest(context) {
         username: user.github_username,
         name: user.github_name,
         avatar: user.github_avatar,
-        has_paid: user.has_paid,
-        is_active: user.is_active,
+        has_paid: user.has_paid || false,
+        is_active: user.is_active || false,
         config: user.config,
+        referral_clicked: user.referral_clicked || false,
+        referral_confirmed: user.referral_confirmed || false,
         created_at: user.created_at,
       },
     });
@@ -63,7 +62,6 @@ export async function onRequest(context) {
     return json({ error: err.message }, 500);
   }
 }
-
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
