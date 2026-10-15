@@ -43,26 +43,50 @@ export async function onRequest(context) {
       );
       
       if (!forkRes.ok && forkRes.status !== 202) {
-        return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
+        const err = await forkRes.text();
+        return json({ error: 'Fork failed: ' + err }, 500);
       }
       
+      // صبر کن تا Fork کامل بشه (حداکثر ۶۰ ثانیه)
       let attempts = 0;
-      while (attempts < 15) {
+      const maxAttempts = 30;  // ۳۰ بار × ۲ ثانیه = ۶۰ ثانیه
+      
+      while (attempts < maxAttempts) {
         await new Promise(r => setTimeout(r, 2000));
         attempts++;
+        
         checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
-        if (checkRes.status === 200) break;
+        
+        if (checkRes.status === 200) {
+          // Fork کامل شد
+          break;
+        }
       }
       
-      if (checkRes.status !== 200) return json({ error: 'Fork timeout' }, 500);
+      if (checkRes.status !== 200) {
+        return json({ 
+          error: 'Fork timeout. لطفاً ۱ دقیقه صبر کن و دوباره امتحان کن. اگه بازم خطا داد، به پشتیبانی پیام بده.' 
+        }, 500);
+      }
+      
+      // ۵ ثانیه اضافه صبر کن برای آماده شدن Secrets API
+      await new Promise(r => setTimeout(r, 5000));
     }
     
     // ۲. config.json رو با API Key آپدیت کن
-    // اول SHA فایل فعلی رو بگیر
-    const configRes = await ghFetch(
+    let configRes = await ghFetch(
       `https://api.github.com/repos/${repo}/contents/config.json`,
       ghToken
     );
+    
+    // اگه config.json نبود، ۵ ثانیه صبر کن و دوباره امتحان کن
+    if (!configRes.ok) {
+      await new Promise(r => setTimeout(r, 5000));
+      configRes = await ghFetch(
+        `https://api.github.com/repos/${repo}/contents/config.json`,
+        ghToken
+      );
+    }
     
     let sha = null;
     let currentConfig = {};
@@ -71,18 +95,21 @@ export async function onRequest(context) {
       const configData = await configRes.json();
       sha = configData.sha;
       try {
-        currentConfig = JSON.parse(atob(configData.content));
-      } catch {}
+        const decoded = decodeURIComponent(escape(atob(configData.content)));
+        currentConfig = JSON.parse(decoded);
+      } catch (e) {
+        console.error('Config parse error:', e);
+      }
     }
     
-    // آپدیت API Key و Secret
     const newConfig = {
       ...currentConfig,
       tt_api_key: api_key,
       tt_api_secret: api_secret,
     };
     
-    const contentB64 = btoa(unescape(encodeURIComponent(JSON.stringify(newConfig, null, 2))));
+    const configStr = JSON.stringify(newConfig, null, 2);
+    const contentB64 = btoa(unescape(encodeURIComponent(configStr)));
     
     const updateBody = {
       message: 'Update config with API keys',
@@ -168,4 +195,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
+        }
