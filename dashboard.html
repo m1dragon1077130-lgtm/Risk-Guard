@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -168,6 +168,11 @@
       text-align: center;
       margin-bottom: 15px;
     }
+    .success-message {
+      color: #22c55e;
+      margin-bottom: 15px;
+      line-height: 1.8;
+    }
   </style>
 </head>
 <body>
@@ -327,7 +332,6 @@
       // بخش ۳: اگه رفرال تایید شده
       if (referralStatus === 'approved') {
         if (!isActive) {
-          // فرم API Key
           content += `
             <div class="card">
               <h2>🔑 اتصال به TheTrueTrade</h2>
@@ -351,18 +355,12 @@
             </div>
           `;
         } else {
-          // پیام متصل شد
           content += `
             <div class="card">
               <h2>✅ ربات شما متصل شد</h2>
-              <p style="color: #22c55e; margin-bottom: 15px; line-height: 1.6;">
-                ربات RiskGuard با موفقیت به حساب TheTrueTrade شما متصل شد و از این به بعد ۲۴/۷ کار می‌کنه.
+              <p class="success-message">
+                ربات RiskGuard با موفقیت به حساب TheTrueTrade شما متصل شد و از این به بعد به صورت شبانه‌روزی کار می‌کنه.
               </p>
-              <a href="https://github.com/${u.username}/riskguard/actions" 
-                 target="_blank"
-                 class="btn">
-                📊 مشاهده وضعیت ربات در GitHub
-              </a>
             </div>
           `;
         }
