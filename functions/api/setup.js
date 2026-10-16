@@ -43,43 +43,91 @@ export async function onRequest(context) {
       );
       
       if (!forkRes.ok && forkRes.status !== 202) {
-        const err = await forkRes.text();
-        return json({ error: 'Fork failed: ' + err }, 500);
+        return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
       }
       
       // صبر کن تا Fork کامل بشه (حداکثر ۶۰ ثانیه)
       let attempts = 0;
-      const maxAttempts = 30;  // ۳۰ بار × ۲ ثانیه = ۶۰ ثانیه
+      const maxAttempts = 30;
       
       while (attempts < maxAttempts) {
         await new Promise(r => setTimeout(r, 2000));
         attempts++;
-        
         checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
-        
-        if (checkRes.status === 200) {
-          // Fork کامل شد
-          break;
-        }
+        if (checkRes.status === 200) break;
       }
       
       if (checkRes.status !== 200) {
         return json({ 
-          error: 'Fork timeout. لطفاً ۱ دقیقه صبر کن و دوباره امتحان کن. اگه بازم خطا داد، به پشتیبانی پیام بده.' 
+          error: 'Fork timeout. لطفاً ۱ دقیقه صبر کن و دوباره امتحان کن.' 
         }, 500);
       }
       
-      // ۵ ثانیه اضافه صبر کن برای آماده شدن Secrets API
       await new Promise(r => setTimeout(r, 5000));
     }
     
-    // ۲. config.json رو با API Key آپدیت کن
+    // ۲. آپدیت workflow با schedule
+    const workflowContent = `name: RiskGuard
+
+on:
+  schedule:
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: riskguard-\${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Run RiskGuard
+        run: python riskguard.py
+`;
+    
+    // چک کن فایل workflow هست
+    const workflowRes = await ghFetch(
+      `https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`,
+      ghToken
+    );
+    
+    if (workflowRes.ok) {
+      const workflowData = await workflowRes.json();
+      const workflowSha = workflowData.sha;
+      
+      const contentB64 = btoa(unescape(encodeURIComponent(workflowContent)));
+      
+      const updateWorkflowRes = await ghFetch(
+        `https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`,
+        ghToken,
+        'PUT',
+        {
+          message: 'Add schedule to workflow',
+          content: contentB64,
+          sha: workflowSha,
+        }
+      );
+      
+      if (!updateWorkflowRes.ok) {
+        console.error('Workflow update failed:', await updateWorkflowRes.text());
+      }
+    }
+    
+    // ۳. آپدیت config.json با API Key
     let configRes = await ghFetch(
       `https://api.github.com/repos/${repo}/contents/config.json`,
       ghToken
     );
     
-    // اگه config.json نبود، ۵ ثانیه صبر کن و دوباره امتحان کن
     if (!configRes.ok) {
       await new Promise(r => setTimeout(r, 5000));
       configRes = await ghFetch(
@@ -109,27 +157,27 @@ export async function onRequest(context) {
     };
     
     const configStr = JSON.stringify(newConfig, null, 2);
-    const contentB64 = btoa(unescape(encodeURIComponent(configStr)));
+    const configB64 = btoa(unescape(encodeURIComponent(configStr)));
     
-    const updateBody = {
+    const configUpdateBody = {
       message: 'Update config with API keys',
-      content: contentB64,
+      content: configB64,
     };
     
-    if (sha) updateBody.sha = sha;
+    if (sha) configUpdateBody.sha = sha;
     
-    const updateRes = await ghFetch(
+    const updateConfigRes = await ghFetch(
       `https://api.github.com/repos/${repo}/contents/config.json`,
       ghToken,
       'PUT',
-      updateBody
+      configUpdateBody
     );
     
-    if (!updateRes.ok) {
-      return json({ error: 'Config update failed: ' + await updateRes.text() }, 500);
+    if (!updateConfigRes.ok) {
+      return json({ error: 'Config update failed: ' + await updateConfigRes.text() }, 500);
     }
     
-    // ۳. فعال‌سازی Actions
+    // ۴. فعال‌سازی Actions
     await ghFetch(
       `https://api.github.com/repos/${repo}/actions/permissions`,
       ghToken,
@@ -137,7 +185,7 @@ export async function onRequest(context) {
       { enabled: true, allowed_actions: 'all' }
     );
     
-    // ۴. Trigger کردن Workflow
+    // ۵. Trigger کردن Workflow
     await new Promise(r => setTimeout(r, 3000));
     
     await ghFetch(
@@ -147,7 +195,7 @@ export async function onRequest(context) {
       { ref: 'main' }
     );
     
-    // ۵. آپدیت وضعیت در Supabase
+    // ۶. آپدیت وضعیت در Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(
         `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`,
@@ -158,7 +206,11 @@ export async function onRequest(context) {
             'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ is_active: true, updated_at: new Date().toISOString() }),
+          body: JSON.stringify({ 
+            is_active: true, 
+            has_paid: true,
+            updated_at: new Date().toISOString() 
+          }),
         }
       );
     }
@@ -195,4 +247,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-        }
+}
