@@ -18,7 +18,6 @@ export async function onRequest(context) {
   }
   
   try {
-    // علامت‌گذاری که کاربر روی لینک رفرال کلیک کرده
     const sbRes = await fetch(
       `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`,
       {
@@ -37,8 +36,7 @@ export async function onRequest(context) {
     );
     
     if (!sbRes.ok) {
-      const errText = await sbRes.text();
-      return json({ error: 'DB error: ' + errText }, 500);
+      return json({ error: 'DB error: ' + await sbRes.text() }, 500);
     }
     
     return json({ ok: true });
@@ -53,4 +51,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
+    }
