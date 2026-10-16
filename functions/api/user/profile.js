@@ -53,7 +53,7 @@ export async function onRequest(context) {
         is_active: user.is_active || false,
         config: user.config,
         referral_clicked: user.referral_clicked || false,
-        referral_confirmed: user.referral_confirmed || false,
+        referral_status: user.referral_status || 'none',
         created_at: user.created_at,
       },
     });
