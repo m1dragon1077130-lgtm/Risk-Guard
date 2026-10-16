@@ -18,9 +18,8 @@ export async function onRequest(context) {
   }
   
   try {
-    // چک کن کاربر روی لینک کلیک کرده
     const checkRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}&select=referral_clicked,referral_status`,
+      `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}&select=referral_clicked,referral_status,github_username,github_name,github_avatar`,
       {
         headers: {
           'apikey': env.SUPABASE_SERVICE_KEY,
@@ -49,7 +48,6 @@ export async function onRequest(context) {
       return json({ error: 'قبلاً تایید شدی' }, 400);
     }
     
-    // ثبت درخواست pending
     const sbRes = await fetch(
       `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`,
       {
@@ -69,6 +67,40 @@ export async function onRequest(context) {
     
     if (!sbRes.ok) {
       return json({ error: 'DB error: ' + await sbRes.text() }, 500);
+    }
+    
+    // ارسال نوتیف به تلگرام
+    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+      try {
+        const message = `🔔 <b>درخواست جدید تایید رفرال</b>
+
+👤 <b>کاربر:</b> ${user.github_username || 'نامعلوم'}
+📧 <b>ایمیل:</b> ${user.github_name || 'نامعلوم'}
+🆔 <b>GitHub ID:</b> ${sessionData.github_id}
+⏰ <b>زمان:</b> ${new Date().toLocaleString('fa-IR')}
+
+🔗 <a href="https://risk-guard.pages.dev/admin.html">ورود به پنل ادمین</a>`;
+        
+        const tgRes = await fetch(
+          `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: env.TELEGRAM_CHAT_ID,
+              text: message,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true,
+            }),
+          }
+        );
+        
+        if (!tgRes.ok) {
+          console.error('Telegram error:', await tgRes.text());
+        }
+      } catch (tgErr) {
+        console.error('Telegram exception:', tgErr);
+      }
     }
     
     return json({ ok: true });
