@@ -191,4 +191,8 @@
       const toast = document.getElementById('toast');
       toast.textContent = msg;
       toast.className = 'toast show' + (isError ? ' error' : '');
-      setTimeout
+      setTimeout(() => { toast.className = 'toast'; }, 3000);
+    }
+  </script>
+</body>
+</html>
