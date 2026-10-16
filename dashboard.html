@@ -227,7 +227,7 @@
       
       const referralClicked = u.referral_clicked || false;
       const referralStatus = u.referral_status || 'none';
-      // none, pending, approved, rejected
+      const isActive = u.is_active || false;
       
       let content = '';
       
@@ -250,13 +250,19 @@
             }</span>
           </div>
           <div class="info-row">
+            <span class="info-label">وضعیت ربات:</span>
+            <span class="status ${isActive ? 'active' : 'pending'}">${
+              isActive ? '✅ متصل' : '⏳ متصل نشده'
+            }</span>
+          </div>
+          <div class="info-row">
             <span class="info-label">تاریخ عضویت:</span>
             <span>${new Date(u.created_at).toLocaleDateString('fa')}</span>
           </div>
         </div>
       `;
       
-      // بخش ۲: اگه هنوز تایید نشده
+      // بخش ۲: اگه هنوز رفرال تایید نشده
       if (referralStatus !== 'approved') {
         content += `
           <div class="card">
@@ -277,7 +283,6 @@
             </div>
         `;
         
-        // مرحله ۲
         if (referralClicked && referralStatus === 'none') {
           content += `
             <div class="referral-box" style="background: linear-gradient(135deg, #1e3a8a, #1e40af);">
@@ -294,7 +299,6 @@
           `;
         }
         
-        // مرحله ۳: pending
         if (referralStatus === 'pending') {
           content += `
             <div class="referral-box" style="background: linear-gradient(135deg, #1e3a8a, #1e40af);">
@@ -306,7 +310,6 @@
           `;
         }
         
-        // مرحله ۴: rejected
         if (referralStatus === 'rejected') {
           content += `
             <div class="referral-box" style="background: linear-gradient(135deg, #7f1d1d, #991b1b);">
@@ -321,12 +324,16 @@
         content += `</div>`;
       }
       
-      // بخش ۳: فعال‌سازی ربات (فقط اگه approved)
+      // بخش ۳: اگه رفرال تایید شده
       if (referralStatus === 'approved') {
-        if (!u.is_active) {
+        if (!isActive) {
+          // فرم API Key
           content += `
             <div class="card">
               <h2>🔑 اتصال به TheTrueTrade</h2>
+              <p style="color: #94a3b8; font-size: 14px; margin-bottom: 15px; line-height: 1.6;">
+                برای فعال‌سازی ربات، API Key و Secret صرافی خودت رو وارد کن.
+              </p>
               <div class="form-group">
                 <label>API Key صرافی</label>
                 <input type="text" id="apiKey" placeholder="کلید API صرافی">
@@ -336,7 +343,7 @@
                 <input type="password" id="apiSecret" placeholder="API Secret">
               </div>
               <button class="btn" id="connectBtn" onclick="connectTTT()">
-                🚀 فعال‌سازی ربات
+                🔌 اتصال ربات
               </button>
               <p style="font-size: 12px; color: #64748b; margin-top: 15px; text-align: center;">
                 ⚠️ فقط دسترسی Readonly + Futures Trading کافیه. هرگز Withdrawal فعال نکن.
@@ -344,11 +351,12 @@
             </div>
           `;
         } else {
+          // پیام متصل شد
           content += `
             <div class="card">
-              <h2>✅ ربات شما فعال است</h2>
-              <p style="color: #22c55e; margin-bottom: 15px;">
-                ربات RiskGuard برای حساب شما فعال است و ۲۴/۷ کار می‌کنه.
+              <h2>✅ ربات شما متصل شد</h2>
+              <p style="color: #22c55e; margin-bottom: 15px; line-height: 1.6;">
+                ربات RiskGuard با موفقیت به حساب TheTrueTrade شما متصل شد و از این به بعد ۲۴/۷ کار می‌کنه.
               </p>
               <a href="https://github.com/${u.username}/riskguard/actions" 
                  target="_blank"
@@ -360,8 +368,8 @@
         }
       }
       
-      // بخش ۴: تنظیمات (فقط اگه فعال)
-      if (u.is_active && referralStatus === 'approved') {
+      // بخش ۴: تنظیمات (فقط اگه متصل)
+      if (isActive && referralStatus === 'approved') {
         const config = u.config || {};
         
         content += `
@@ -480,7 +488,7 @@
       
       const btn = document.getElementById('connectBtn');
       btn.disabled = true;
-      btn.textContent = '⏳ در حال راه‌اندازی... (۱۵ ثانیه)';
+      btn.textContent = '⏳ در حال اتصال... (۱۵ ثانیه)';
       
       try {
         const resp = await fetch('/api/setup', {
@@ -495,7 +503,7 @@
         const data = await resp.json();
         
         if (data.ok) {
-          showToast('✅ ربات با موفقیت فعال شد!');
+          showToast('✅ ربات با موفقیت متصل شد!');
           document.getElementById('apiKey').value = '';
           document.getElementById('apiSecret').value = '';
           
@@ -507,7 +515,7 @@
         showToast('❌ خطا در اتصال: ' + err.message, true);
       } finally {
         btn.disabled = false;
-        btn.textContent = '🚀 فعال‌سازی ربات';
+        btn.textContent = '🔌 اتصال ربات';
       }
     }
 
