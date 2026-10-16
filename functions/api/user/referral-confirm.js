@@ -18,9 +18,9 @@ export async function onRequest(context) {
   }
   
   try {
-    // اول چک کن که کاربر روی لینک کلیک کرده
+    // چک کن کاربر روی لینک کلیک کرده
     const checkRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}&select=referral_clicked,referral_confirmed`,
+      `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}&select=referral_clicked,referral_status`,
       {
         headers: {
           'apikey': env.SUPABASE_SERVICE_KEY,
@@ -41,11 +41,15 @@ export async function onRequest(context) {
       return json({ error: 'ابتدا باید روی لینک رفرال کلیک کنی' }, 400);
     }
     
-    if (user.referral_confirmed) {
-      return json({ error: 'قبلاً تخفیف گرفتی' }, 400);
+    if (user.referral_status === 'pending') {
+      return json({ error: 'درخواست شما در انتظار تایید است' }, 400);
     }
     
-    // تایید تخفیف
+    if (user.referral_status === 'approved') {
+      return json({ error: 'قبلاً تایید شدی' }, 400);
+    }
+    
+    // ثبت درخواست pending
     const sbRes = await fetch(
       `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`,
       {
@@ -57,19 +61,17 @@ export async function onRequest(context) {
           'Prefer': 'return=minimal',
         },
         body: JSON.stringify({
-          referral_confirmed: true,
-          referral_confirmed_at: new Date().toISOString(),
-          discount_percent: 50,
+          referral_status: 'pending',
+          referral_requested_at: new Date().toISOString(),
         }),
       }
     );
     
     if (!sbRes.ok) {
-      const errText = await sbRes.text();
-      return json({ error: 'DB error: ' + errText }, 500);
+      return json({ error: 'DB error: ' + await sbRes.text() }, 500);
     }
     
-    return json({ ok: true, discount: 50 });
+    return json({ ok: true });
     
   } catch (err) {
     return json({ error: err.message }, 500);
