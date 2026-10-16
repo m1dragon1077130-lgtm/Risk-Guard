@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>پنل ادمین - RiskGuard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Tahoma, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 1000px; margin: auto; }
+    h1 { font-size: 28px; color: #3b82f6; margin-bottom: 20px; }
+    .card {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    .user-info { flex: 1; min-width: 200px; }
+    .user-info .name { font-weight: bold; margin-bottom: 5px; }
+    .user-info .detail { color: #94a3b8; font-size: 13px; margin-bottom: 3px; }
+    .avatar {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 2px solid #3b82f6;
+    }
+    .actions { display: flex; gap: 10px; }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .btn-approve { background: #22c55e; color: #fff; }
+    .btn-approve:hover { background: #16a34a; }
+    .btn-reject { background: #ef4444; color: #fff; }
+    .btn-reject:hover { background: #dc2626; }
+    .empty { text-align: center; padding: 60px; color: #64748b; font-size: 16px; }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #22c55e;
+      color: #fff;
+      padding: 15px 25px;
+      border-radius: 8px;
+      font-weight: bold;
+      opacity: 0;
+      transition: 0.3s;
+      pointer-events: none;
+      z-index: 9999;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: #ef4444; }
+    .admin-key-input {
+      width: 100%;
+      padding: 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 15px;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔐 پنل ادمین RiskGuard</h1>
+    
+    <input 
+      type="password" 
+      id="adminKey" 
+      class="admin-key-input"
+      placeholder="Admin Key رو وارد کن"
+      value="">
+    
+    <button class="btn btn-approve" onclick="loadPending()" style="width: 100%; margin-bottom: 20px;">
+      🔄 بارگذاری درخواست‌ها
+    </button>
+    
+    <div id="pending"></div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let adminKey = localStorage.getItem('adminKey') || '';
+
+    document.getElementById('adminKey').value = adminKey;
+    if (adminKey) loadPending();
+
+    async function loadPending() {
+      adminKey = document.getElementById('adminKey').value.trim();
+      if (!adminKey) {
+        showToast('❌ Admin Key رو وارد کن', true);
+        return;
+      }
+      
+      localStorage.setItem('adminKey', adminKey);
+      
+      try {
+        const resp = await fetch(`/api/admin/pending?key=${adminKey}`);
+        const data = await resp.json();
+        
+        if (!data.ok) {
+          showToast('❌ ' + (data.error || 'خطا'), true);
+          document.getElementById('pending').innerHTML = 
+            `<div class="empty">❌ ${data.error || 'خطا'}</div>`;
+          return;
+        }
+        
+        renderPending(data.users);
+        
+      } catch (err) {
+        showToast('❌ خطا در اتصال', true);
+      }
+    }
+
+    function renderPending(users) {
+      if (!users || users.length === 0) {
+        document.getElementById('pending').innerHTML = 
+          `<div class="empty">✅ هیچ درخواست pending وجود نداره</div>`;
+        return;
+      }
+      
+      const html = users.map(u => `
+        <div class="card">
+          <img class="avatar" src="${u.github_avatar || ''}" alt="">
+          <div class="user-info">
+            <div class="name">${u.github_username}</div>
+            <div class="detail">📧 ${u.github_name || '-'}</div>
+            <div class="detail">🆔 github_id: ${u.github_id}</div>
+            <div class="detail">⏰ ${new Date(u.referral_requested_at).toLocaleString('fa')}</div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-approve" onclick="reviewUser(${u.github_id}, 'approve')">
+              ✅ تایید
+            </button>
+            <button class="btn btn-reject" onclick="reviewUser(${u.github_id}, 'reject')">
+              ❌ رد
+            </button>
+          </div>
+        </div>
+      `).join('');
+      
+      document.getElementById('pending').innerHTML = html;
+    }
+
+    async function reviewUser(githubId, action) {
+      if (!confirm(action === 'approve' ? 'تایید کنی؟' : 'رد کنی؟')) return;
+      
+      try {
+        const resp = await fetch('/api/admin/review', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: adminKey,
+            github_id: githubId,
+            action: action,
+          }),
+        });
+        
+        const data = await resp.json();
+        
+        if (data.ok) {
+          showToast(action === 'approve' ? '✅ تایید شد' : '❌ رد شد');
+          setTimeout(loadPending, 1000);
+        } else {
+          showToast('❌ ' + (data.error || 'خطا'), true);
+        }
+      } catch (err) {
+        showToast('❌ خطا در اتصال', true);
+      }
+    }
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout
