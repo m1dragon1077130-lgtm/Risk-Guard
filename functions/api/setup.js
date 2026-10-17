@@ -20,39 +20,32 @@ export async function onRequest(context) {
   
   const ghToken = sessionData.gh_token;
   const username = sessionData.username;
-  
-  // اسم پیش‌فرض‌ها
-  let repoName = "riskguard"; 
-  let repo = `${username}/${repoName}`;
+  const repo = `${username}/riskguard`;
   
   try {
     // ۱. چک: مخزن riskguard وجود داره؟
     let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
     
-    // اگه نبود، ببین مخزن riskguard-template وجود داره؟
     if (checkRes.status === 404) {
-        repoName = "riskguard-template";
-        repo = `${username}/${repoName}`;
-        checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
-    }
-
-    // اگه هیچ کدوم نبود، یعنی هنوز Fork نشده، پس خودمون Fork میکنیم
-    if (checkRes.status === 404) {
-      repoName = "riskguard";
-      repo = `${username}/${repoName}`;
+      // Fork کن (با اجبار اسم riskguard)
       const forkRes = await ghFetch(
         `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
-        ghToken, 'POST', { name: "riskguard" }
+        ghToken,
+        'POST',
+        { name: "riskguard" }
       );
       
       if (!forkRes.ok && forkRes.status !== 202) {
         return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
       }
+      
+      // ۱۵ ثانیه صبر میکنیم تا گیت‌هاب فایل‌ها رو کپی کنه
       await new Promise(r => setTimeout(r, 15000));
     }
     
-    // ۲. حالا که اسم مخزن رو دقیق فهمیدیم، config.json رو آپدیت میکنیم
+    // ۲. آپدیت config.json
     let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
+    
     if (!configRes.ok) {
       await new Promise(r => setTimeout(r, 5000));
       configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
@@ -60,40 +53,53 @@ export async function onRequest(context) {
     
     let sha = null;
     let currentConfig = {};
+    
     if (configRes.ok) {
       const configData = await configRes.json();
       sha = configData.sha;
       try {
-        currentConfig = JSON.parse(decodeURIComponent(escape(atob(configData.content))));
+        const decoded = decodeURIComponent(escape(atob(configData.content)));
+        currentConfig = JSON.parse(decoded);
       } catch (e) {}
     }
     
-    const newConfig = { ...currentConfig, tt_api_key: api_key, tt_api_secret: api_secret };
+    const newConfig = {
+      ...currentConfig,
+      tt_api_key: api_key,
+      tt_api_secret: api_secret,
+    };
+    
     const configStr = JSON.stringify(newConfig, null, 2);
     const configB64 = btoa(unescape(encodeURIComponent(configStr)));
     
-    const updateConfigBody = { message: 'Update config', content: configB64 };
+    const updateConfigBody = { message: 'Update config with API keys', content: configB64 };
     if (sha) updateConfigBody.sha = sha;
     
     const updateConfigRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken, 'PUT', updateConfigBody);
+    
     if (!updateConfigRes.ok) {
       return json({ error: 'Config update failed: ' + await updateConfigRes.text() }, 500);
     }
     
     // ۳. فعال‌سازی Actions
     await ghFetch(`https://api.github.com/repos/${repo}/actions/permissions`, ghToken, 'PUT', { enabled: true, allowed_actions: 'all' });
+    
+    // ۴. Trigger کردن Workflow (با اسم دقیق فایل riskguard.yml)
     await new Promise(r => setTimeout(r, 3000));
     await ghFetch(`https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`, ghToken, 'POST', { ref: 'main' });
     
-    // ۴. ذخیره در دیتابیس (حواست باشه اسم مخزن رو اینجا هم ذخیره میکنیم که داشبورد بدونه)
+    // ۵. آپدیت Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(`${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`, {
         method: 'PATCH',
-        headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
+        headers: { 
+            'apikey': env.SUPABASE_SERVICE_KEY, 
+            'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`, 
+            'Content-Type': 'application/json' 
+        },
         body: JSON.stringify({ 
             is_active: true, 
-            has_paid: true,
-            config: { ...newConfig, repo_name: repoName } // اسم مخزن رو ذخیره میکنیم
+            has_paid: true 
         }),
       });
     }
@@ -107,12 +113,23 @@ export async function onRequest(context) {
 
 function ghFetch(url, token, method = 'GET', body = null) {
   const options = { 
-    method, headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'RiskGuard' } 
+    method, 
+    headers: { 
+      'Authorization': `token ${token}`, 
+      'Accept': 'application/vnd.github.v3+json', 
+      'User-Agent': 'RiskGuard' 
+    } 
   };
-  if (body) { options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(body); }
+  if (body) { 
+    options.headers['Content-Type'] = 'application/json'; 
+    options.body = JSON.stringify(body); 
+  }
   return fetch(url, options);
 }
 
 function json(data, status = 200) { 
-  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }); 
+  return new Response(JSON.stringify(data), { 
+    status, 
+    headers: { 'Content-Type': 'application/json' } 
+  }); 
 }
