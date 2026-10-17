@@ -18,8 +18,14 @@ export async function onRequest(context) {
       return json({ ok: true, status: 'ready' });
     }
     
-    // درخواست Fork رو میفرستیم
-    await ghFetch(`https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`, ghToken, 'POST');
+    // درخواست Fork رو میفرستیم و اسمش رو riskguard میذاریم
+    const forkRes = await ghFetch(`https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`, ghToken, 'POST', {
+      name: "riskguard" // 👈 این خط خیلی مهمه
+    });
+    
+    if (!forkRes.ok && forkRes.status !== 202) {
+        return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
+    }
     
     // فوراً برمیگردیم. سایت میفهمه که باید به کاربر بگه ۱ دقیقه صبر کنه
     return json({ ok: true, status: 'pending' });
@@ -29,8 +35,18 @@ export async function onRequest(context) {
 }
 
 function ghFetch(url, token, method = 'GET', body = null) {
-  const options = { method, headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'RiskGuard' } };
-  if (body) { options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(body); }
+  const options = { 
+    method, 
+    headers: { 
+      'Authorization': `token ${token}`, 
+      'Accept': 'application/vnd.github.v3+json', 
+      'User-Agent': 'RiskGuard' 
+    } 
+  };
+  if (body) { 
+    options.headers['Content-Type'] = 'application/json'; 
+    options.body = JSON.stringify(body); 
+  }
   return fetch(url, options);
 }
 function json(data, status = 200) { return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }); }
