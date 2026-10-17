@@ -46,12 +46,12 @@ export async function onRequest(context) {
         return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
       }
       
-      // صبر کن تا Fork کامل بشه (حداکثر ۶۰ ثانیه)
+      // صبر کن تا Fork کامل بشه (حداکثر ۱۰ ثانیه - کم!)
       let attempts = 0;
-      const maxAttempts = 30;
+      const maxAttempts = 10;  // ۱۰ بار × ۱ ثانیه = ۱۰ ثانیه
       
       while (attempts < maxAttempts) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 1000));  // ۱ ثانیه (نه ۲)
         attempts++;
         checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
         if (checkRes.status === 200) break;
@@ -63,10 +63,10 @@ export async function onRequest(context) {
         }, 500);
       }
       
-      await new Promise(r => setTimeout(r, 5000));
+      await new Promise(r => setTimeout(r, 2000));  // ۲ ثانیه (نه ۵)
     }
     
-    // ۲. آپدیت workflow با schedule
+    // ۲. آپدیت workflow
     const workflowContent = `name: RiskGuard
 
 on:
@@ -94,7 +94,6 @@ jobs:
         run: python riskguard.py
 `;
     
-    // چک کن فایل workflow هست
     const workflowRes = await ghFetch(
       `https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`,
       ghToken
@@ -122,14 +121,14 @@ jobs:
       }
     }
     
-    // ۳. آپدیت config.json با API Key
+    // ۳. آپدیت config.json
     let configRes = await ghFetch(
       `https://api.github.com/repos/${repo}/contents/config.json`,
       ghToken
     );
     
     if (!configRes.ok) {
-      await new Promise(r => setTimeout(r, 5000));
+      await new Promise(r => setTimeout(r, 2000));  // ۲ ثانیه
       configRes = await ghFetch(
         `https://api.github.com/repos/${repo}/contents/config.json`,
         ghToken
@@ -186,7 +185,7 @@ jobs:
     );
     
     // ۵. Trigger کردن Workflow
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 1000));  // ۱ ثانیه (نه ۳)
     
     await ghFetch(
       `https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`,
@@ -195,7 +194,7 @@ jobs:
       { ref: 'main' }
     );
     
-    // ۶. آپدیت وضعیت در Supabase
+    // ۶. آپدیت Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(
         `${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`,
@@ -217,11 +216,12 @@ jobs:
     
     return json({
       ok: true,
-      message: 'ربات فعال شد!',
+      message: 'ربات با موفقیت متصل شد!',
       repo: `https://github.com/${repo}`,
     });
     
   } catch (err) {
+    console.error('Setup error:', err);
     return json({ error: err.message }, 500);
   }
 }
@@ -247,4 +247,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
+  }
