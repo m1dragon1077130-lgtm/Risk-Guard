@@ -232,7 +232,11 @@
       
       const referralClicked = u.referral_clicked || false;
       const referralStatus = u.referral_status || 'none';
-      const isActive = u.is_active || false;
+      
+      // بررسی دقیق: is_active + API Key در config
+      const config = u.config || {};
+      const hasApiKey = !!(config.tt_api_key && config.tt_api_secret);
+      const isActive = (u.is_active || false) && hasApiKey;
       
       let content = '';
       
@@ -368,8 +372,6 @@
       
       // بخش ۴: تنظیمات (فقط اگه متصل)
       if (isActive && referralStatus === 'approved') {
-        const config = u.config || {};
-        
         content += `
           <div class="card">
             <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
