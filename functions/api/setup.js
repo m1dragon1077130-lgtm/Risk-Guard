@@ -31,39 +31,16 @@ export async function onRequest(context) {
   const repo = `${username}/riskguard`;
   
   try {
-    // ۱. چک: مخزن riskguard وجود داره؟
-    let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
+    // ۱. چک کن مخزن ساخته شده
+    let checkRes = await ghFetch(
+      `https://api.github.com/repos/${repo}`,
+      ghToken
+    );
     
-    if (checkRes.status === 404) {
-      // Fork کن
-      const forkRes = await ghFetch(
-        `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
-        ghToken,
-        'POST'
-      );
-      
-      if (!forkRes.ok && forkRes.status !== 202) {
-        return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
-      }
-      
-      // صبر کن تا Fork کامل بشه (حداکثر ۱۰ ثانیه - کم!)
-      let attempts = 0;
-      const maxAttempts = 10;  // ۱۰ بار × ۱ ثانیه = ۱۰ ثانیه
-      
-      while (attempts < maxAttempts) {
-        await new Promise(r => setTimeout(r, 1000));  // ۱ ثانیه (نه ۲)
-        attempts++;
-        checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
-        if (checkRes.status === 200) break;
-      }
-      
-      if (checkRes.status !== 200) {
-        return json({ 
-          error: 'Fork timeout. لطفاً ۱ دقیقه صبر کن و دوباره امتحان کن.' 
-        }, 500);
-      }
-      
-      await new Promise(r => setTimeout(r, 2000));  // ۲ ثانیه (نه ۵)
+    if (checkRes.status !== 200) {
+      return json({ 
+        error: 'مخزن riskguard ساخته نشده. لطفاً به مرحله‌ی قبل برگرد و «Fork» رو بزن.' 
+      }, 500);
     }
     
     // ۲. آپدیت workflow
@@ -105,7 +82,7 @@ jobs:
       
       const contentB64 = btoa(unescape(encodeURIComponent(workflowContent)));
       
-      const updateWorkflowRes = await ghFetch(
+      await ghFetch(
         `https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`,
         ghToken,
         'PUT',
@@ -115,10 +92,6 @@ jobs:
           sha: workflowSha,
         }
       );
-      
-      if (!updateWorkflowRes.ok) {
-        console.error('Workflow update failed:', await updateWorkflowRes.text());
-      }
     }
     
     // ۳. آپدیت config.json
@@ -128,25 +101,18 @@ jobs:
     );
     
     if (!configRes.ok) {
-      await new Promise(r => setTimeout(r, 2000));  // ۲ ثانیه
-      configRes = await ghFetch(
-        `https://api.github.com/repos/${repo}/contents/config.json`,
-        ghToken
-      );
+      return json({ error: 'config.json پیدا نشد' }, 500);
     }
     
-    let sha = null;
-    let currentConfig = {};
+    const configData = await configRes.json();
+    const sha = configData.sha;
     
-    if (configRes.ok) {
-      const configData = await configRes.json();
-      sha = configData.sha;
-      try {
-        const decoded = decodeURIComponent(escape(atob(configData.content)));
-        currentConfig = JSON.parse(decoded);
-      } catch (e) {
-        console.error('Config parse error:', e);
-      }
+    let currentConfig = {};
+    try {
+      const decoded = decodeURIComponent(escape(atob(configData.content)));
+      currentConfig = JSON.parse(decoded);
+    } catch (e) {
+      console.error('Config parse error:', e);
     }
     
     const newConfig = {
@@ -158,18 +124,15 @@ jobs:
     const configStr = JSON.stringify(newConfig, null, 2);
     const configB64 = btoa(unescape(encodeURIComponent(configStr)));
     
-    const configUpdateBody = {
-      message: 'Update config with API keys',
-      content: configB64,
-    };
-    
-    if (sha) configUpdateBody.sha = sha;
-    
     const updateConfigRes = await ghFetch(
       `https://api.github.com/repos/${repo}/contents/config.json`,
       ghToken,
       'PUT',
-      configUpdateBody
+      {
+        message: 'Update config with API keys',
+        content: configB64,
+        sha: sha,
+      }
     );
     
     if (!updateConfigRes.ok) {
@@ -185,7 +148,7 @@ jobs:
     );
     
     // ۵. Trigger کردن Workflow
-    await new Promise(r => setTimeout(r, 1000));  // ۱ ثانیه (نه ۳)
+    await new Promise(r => setTimeout(r, 1000));
     
     await ghFetch(
       `https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`,
@@ -247,4 +210,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-  }
+}
