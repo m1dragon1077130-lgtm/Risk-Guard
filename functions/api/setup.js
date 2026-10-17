@@ -32,21 +32,22 @@ export async function onRequest(context) {
         `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
         ghToken,
         'POST',
-        { name: "riskguard" } // 👈 اسم مخزن رو اجبارا riskguard میکنیم
+        { name: "riskguard" } // 👈 اسم مخزن جدید رو ریسک گارد می‌ذاریم
       );
       
       if (!forkRes.ok && forkRes.status !== 202) {
         return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
       }
       
-      // صبر میکنیم تا مخزن ساخته بشه
-      await new Promise(r => setTimeout(r, 8000));
+      // صبر ۱۵ ثانیه‌ای برای کپی شدن فایل‌ها
+      await new Promise(r => setTimeout(r, 15000));
     }
     
     // ۲. آپدیت config.json
     let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
     
     if (!configRes.ok) {
+      // اگه فایل نبود، ۵ ثانیه دیگه صبر میکنیم و دوباره چک میکنیم
       await new Promise(r => setTimeout(r, 5000));
       configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
     }
@@ -86,7 +87,7 @@ export async function onRequest(context) {
     await new Promise(r => setTimeout(r, 3000));
     await ghFetch(`https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`, ghToken, 'POST', { ref: 'main' });
     
-    // ۴. آپدیت Supabase (is_active = true)
+    // ۴. آپدیت Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(`${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`, {
         method: 'PATCH',
