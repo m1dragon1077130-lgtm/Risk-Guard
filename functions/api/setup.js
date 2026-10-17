@@ -39,6 +39,7 @@ export async function onRequest(context) {
         return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
       }
       
+      // صبر ۱۵ ثانیه‌ای
       await new Promise(r => setTimeout(r, 15000));
     }
     
