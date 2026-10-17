@@ -42,17 +42,13 @@ export async function onRequest(context) {
       await new Promise(r => setTimeout(r, 15000));
     }
     
-    // ۲. ساخت/آپدیت فایل config.json
+    // ۲. آپدیت/ساخت config.json (ضد گلوله)
     let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
-    
-    if (!configRes.ok) {
-      await new Promise(r => setTimeout(r, 5000));
-      configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
-    }
     
     let sha = null;
     let currentConfig = {};
     
+    // اگر فایل وجود داشت، محتوا و SHA اون رو می‌گیریم
     if (configRes.ok) {
       const configData = await configRes.json();
       sha = configData.sha;
@@ -79,8 +75,8 @@ export async function onRequest(context) {
     if (!updateConfigRes.ok) {
       return json({ error: 'Config update failed: ' + await updateConfigRes.text() }, 500);
     }
-    
-    // ۳. ساخت/آپدیت فایل workflow (این بخش جدیده)
+
+    // ۳. آپدیت/ساخت فایل Workflow (برای اینکه اکشن‌ها همیشه کار کنن)
     const workflowContent = `name: RiskGuard
 
 on:
@@ -108,28 +104,20 @@ jobs:
         run: python riskguard.py
 `;
     
-    // چک کن فایل workflow هست؟
     let wfRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken);
     let wfSha = null;
     
     if (wfRes.ok) {
       const wfData = await wfRes.json();
       wfSha = wfData.sha;
-    } else {
-        // اگه پوشه‌ی .github/workflows وجود نداشت، خودش میسازد
     }
     
     const wfB64 = btoa(unescape(encodeURIComponent(workflowContent)));
-    const updateWfBody = { message: 'Add/Update workflow', content: wfB64 };
+    const updateWfBody = { message: 'Update workflow', content: wfB64 };
     if (wfSha) updateWfBody.sha = wfSha;
     
-    const updateWfRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken, 'PUT', updateWfBody);
+    await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken, 'PUT', updateWfBody);
     
-    if (!updateWfRes.ok) {
-        // اگه خطا داد، شاید نیاز به ساختن پوشه داشته باشه
-        console.error('Workflow update failed:', await updateWfRes.text());
-    }
-
     // ۴. فعال‌سازی Actions
     await ghFetch(`https://api.github.com/repos/${repo}/actions/permissions`, ghToken, 'PUT', { enabled: true, allowed_actions: 'all' });
     
