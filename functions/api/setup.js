@@ -23,27 +23,33 @@ export async function onRequest(context) {
   const repo = `${username}/riskguard`;
   
   try {
-    // ۱. چک: آیا مخزن ساخته شده است؟
+    // ۱. چک: مخزن riskguard وجود داره؟
     let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
     
-    // اگر ساخته نشده بود، فقط Fork رو شروع میکنیم و فوراً به کاربر پیام میدیم
     if (checkRes.status === 404) {
-      await ghFetch(
+      // Fork کن
+      const forkRes = await ghFetch(
         `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
         ghToken,
         'POST',
         { name: "riskguard" }
       );
       
-      // فوراً برمیگردیم تا Cloudflare Timeout نده
-      return json({ 
-        ok: false, 
-        error: 'درخواست ساخت مخزن در گیت‌هاب ثبت شد. لطفا ۱ دقیقه صبر کنید و دوباره روی دکمه اتصال کلیک کنید.' 
-      }, 202);
+      if (!forkRes.ok && forkRes.status !== 202) {
+        return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
+      }
+      
+      await new Promise(r => setTimeout(r, 15000));
     }
-
-    // اگر مخزن ساخته شده بود، ادامه میدیم و تنظیمات رو ذخیره میکنیم
+    
+    // ۲. آپدیت config.json
     let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
+    
+    if (!configRes.ok) {
+      await new Promise(r => setTimeout(r, 5000));
+      configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
+    }
+    
     let sha = null;
     let currentConfig = {};
     
@@ -56,11 +62,16 @@ export async function onRequest(context) {
       } catch (e) {}
     }
     
-    const newConfig = { ...currentConfig, tt_api_key: api_key, tt_api_secret: api_secret };
+    const newConfig = {
+      ...currentConfig,
+      tt_api_key: api_key,
+      tt_api_secret: api_secret,
+    };
+    
     const configStr = JSON.stringify(newConfig, null, 2);
     const configB64 = btoa(unescape(encodeURIComponent(configStr)));
     
-    const updateConfigBody = { message: 'Update config', content: configB64 };
+    const updateConfigBody = { message: 'Update config with API keys', content: configB64 };
     if (sha) updateConfigBody.sha = sha;
     
     const updateConfigRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken, 'PUT', updateConfigBody);
@@ -69,25 +80,12 @@ export async function onRequest(context) {
       return json({ error: 'Config update failed: ' + await updateConfigRes.text() }, 500);
     }
     
-    // آپدیت فایل Workflow
-    const workflowContent = `name: RiskGuard\n\non:\n  schedule:\n    - cron: '0 */5 * * *'\n  workflow_dispatch:\n\nconcurrency:\n  group: riskguard-\${{ github.repository }}\n  cancel-in-progress: false\n\njobs:\n  run:\n    runs-on: ubuntu-latest\n    timeout-minutes: 350\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.11'\n      - name: Run RiskGuard\n        run: python riskguard.py\n`;
-    
-    let wfRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken);
-    let wfSha = null;
-    if (wfRes.ok) { const wfData = await wfRes.json(); wfSha = wfData.sha; }
-    
-    const wfB64 = btoa(unescape(encodeURIComponent(workflowContent)));
-    const updateWfBody = { message: 'Update workflow', content: wfB64 };
-    if (wfSha) updateWfBody.sha = wfSha;
-    
-    await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken, 'PUT', updateWfBody);
-    
-    // فعال‌سازی Actions
+    // ۳. فعال‌سازی Actions و Trigger
     await ghFetch(`https://api.github.com/repos/${repo}/actions/permissions`, ghToken, 'PUT', { enabled: true, allowed_actions: 'all' });
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 3000));
     await ghFetch(`https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`, ghToken, 'POST', { ref: 'main' });
     
-    // ذخیره در دیتابیس
+    // ۴. آپدیت Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(`${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`, {
         method: 'PATCH',
@@ -104,11 +102,24 @@ export async function onRequest(context) {
 }
 
 function ghFetch(url, token, method = 'GET', body = null) {
-  const options = { method, headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'RiskGuard' } };
-  if (body) { options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(body); }
+  const options = { 
+    method, 
+    headers: { 
+      'Authorization': `token ${token}`, 
+      'Accept': 'application/vnd.github.v3+json', 
+      'User-Agent': 'RiskGuard' 
+    } 
+  };
+  if (body) { 
+    options.headers['Content-Type'] = 'application/json'; 
+    options.body = JSON.stringify(body); 
+  }
   return fetch(url, options);
 }
 
 function json(data, status = 200) { 
-  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }); 
+  return new Response(JSON.stringify(data), { 
+    status, 
+    headers: { 'Content-Type': 'application/json' } 
+  }); 
 }
