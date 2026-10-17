@@ -6,78 +6,21 @@
   <title>داشبورد - RiskGuard</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: Tahoma, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      min-height: 100vh;
-      padding: 20px;
-    }
+    body { font-family: Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 20px; }
     .container { max-width: 800px; margin: auto; }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 20px;
-      background: #1e293b;
-      border-radius: 12px;
-      margin-bottom: 20px;
-    }
+    .header { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: #1e293b; border-radius: 12px; margin-bottom: 20px; }
     .header h1 { font-size: 24px; color: #3b82f6; margin: 0; }
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      border: 2px solid #3b82f6;
-    }
-    .logout {
-      padding: 8px 16px;
-      background: #dc2626;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .card {
-      background: #1e293b;
-      padding: 25px;
-      border-radius: 12px;
-      margin-bottom: 20px;
-    }
-    .card h2 {
-      font-size: 18px;
-      margin-bottom: 15px;
-      color: #94a3b8;
-    }
-    .status {
-      display: inline-block;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-    }
+    .user-info { display: flex; align-items: center; gap: 10px; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #3b82f6; }
+    .logout { padding: 8px 16px; background: #dc2626; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .card { background: #1e293b; padding: 25px; border-radius: 12px; margin-bottom: 20px; }
+    .card h2 { font-size: 18px; margin-bottom: 15px; color: #94a3b8; }
+    .status { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 13px; }
     .status.active { background: #22c55e; color: #fff; }
     .status.pending { background: #f59e0b; color: #fff; }
     .status.locked { background: #ef4444; color: #fff; }
     .status.waiting { background: #3b82f6; color: #fff; }
-    .btn {
-      padding: 12px 24px;
-      background: #3b82f6;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: bold;
-      cursor: pointer;
-      margin-top: 10px;
-      transition: 0.2s;
-      width: 100%;
-    }
+    .btn { padding: 12px 24px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: 0.2s; width: 100%; }
     .btn:hover:not(:disabled) { background: #2563eb; }
     .btn:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
     .btn-success { background: #22c55e; }
@@ -85,85 +28,21 @@
     .btn-referral { background: #f59e0b; }
     .btn-referral:hover { background: #d97706; }
     .form-group { margin-bottom: 15px; }
-    label {
-      display: block;
-      margin-bottom: 6px;
-      font-size: 14px;
-    }
-    input {
-      width: 100%;
-      padding: 10px;
-      background: #0f172a;
-      border: 1px solid #334155;
-      color: #fff;
-      border-radius: 8px;
-      font-size: 15px;
-    }
-    input:focus {
-      outline: none;
-      border-color: #3b82f6;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid #334155;
-      font-size: 14px;
-    }
+    label { display: block; margin-bottom: 6px; font-size: 14px; }
+    input { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 8px; font-size: 15px; }
+    input:focus { outline: none; border-color: #3b82f6; }
+    .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #334155; font-size: 14px; }
     .info-row:last-child { border-bottom: none; }
     .info-label { color: #94a3b8; }
     .loading { text-align: center; padding: 40px; color: #94a3b8; }
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: #22c55e;
-      color: #fff;
-      padding: 15px 25px;
-      border-radius: 8px;
-      font-weight: bold;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      opacity: 0;
-      transition: 0.3s;
-      pointer-events: none;
-      max-width: 90%;
-      z-index: 9999;
-    }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #22c55e; color: #fff; padding: 15px 25px; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; transition: 0.3s; pointer-events: none; max-width: 90%; z-index: 9999; }
     .toast.show { opacity: 1; }
     .toast.error { background: #ef4444; }
-    .referral-box {
-      background: linear-gradient(135deg, #78350f, #b45309);
-      padding: 20px;
-      border-radius: 10px;
-      margin-bottom: 20px;
-      text-align: center;
-    }
-    .referral-box h3 {
-      color: #fff;
-      margin-bottom: 10px;
-      font-size: 16px;
-    }
-    .referral-box p {
-      color: #fef3c7;
-      font-size: 13px;
-      margin-bottom: 15px;
-      line-height: 1.6;
-    }
-    .step-number {
-      display: inline-block;
-      width: 30px;
-      height: 30px;
-      line-height: 30px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 50%;
-      margin-left: 10px;
-      font-weight: bold;
-    }
-    .success-message {
-      color: #22c55e;
-      margin-bottom: 15px;
-      line-height: 1.8;
-    }
+    .referral-box { background: linear-gradient(135deg, #78350f, #b45309); padding: 20px; border-radius: 10px; margin-bottom: 20px; text-align: center; }
+    .referral-box h3 { color: #fff; margin-bottom: 10px; font-size: 16px; }
+    .referral-box p { color: #fef3c7; font-size: 13px; margin-bottom: 15px; line-height: 1.6; }
+    .step-number { display: inline-block; width: 30px; height: 30px; line-height: 30px; background: rgba(255,255,255,0.2); border-radius: 50%; margin-left: 10px; font-weight: bold; }
+    .success-message { color: #22c55e; margin-bottom: 15px; line-height: 1.8; }
   </style>
 </head>
 <body>
@@ -176,12 +55,8 @@
         <button class="logout" onclick="logout()">خروج</button>
       </div>
     </div>
-
-    <div id="content">
-      <div class="loading">⏳ در حال بارگذاری...</div>
-    </div>
+    <div id="content"><div class="loading">⏳ در حال بارگذاری...</div></div>
   </div>
-
   <div id="toast" class="toast"></div>
 
   <script>
@@ -190,70 +65,45 @@
     async function loadProfile() {
       try {
         const resp = await fetch('/api/user/profile');
-        
-        if (resp.status === 401) {
-          window.location.href = '/login.html';
-          return;
-        }
-        
+        if (resp.status === 401) { window.location.href = '/login.html'; return; }
         const data = await resp.json();
-        
         if (!data.ok) {
-          document.getElementById('content').innerHTML =
-            `<div class="card" style="color:#ef4444">❌ خطا: ${data.error}</div>`;
+          document.getElementById('content').innerHTML = `<div class="card" style="color:#ef4444">❌ خطا: ${data.error}</div>`;
           return;
         }
-        
         currentUser = data.user;
         renderDashboard();
-        
       } catch (err) {
-        document.getElementById('content').innerHTML =
-          `<div class="card" style="color:#ef4444">❌ خطا در اتصال</div>`;
+        document.getElementById('content').innerHTML = `<div class="card" style="color:#ef4444">❌ خطا در اتصال</div>`;
       }
     }
 
     function renderDashboard() {
       const u = currentUser;
-      
       document.getElementById('userName').textContent = u.username || 'کاربر';
-      if (u.avatar) {
-        document.getElementById('userAvatar').src = u.avatar;
-      }
+      if (u.avatar) document.getElementById('userAvatar').src = u.avatar;
       
       const referralClicked = u.referral_clicked || false;
       const referralStatus = u.referral_status || 'none';
       
-      // بررسی دقیق: is_active + API Key در config
       const config = u.config || {};
       const hasApiKey = !!(config.tt_api_key && config.tt_api_secret);
       const isActive = (u.is_active || false) && hasApiKey;
       
       let content = '';
       
-      // بخش ۱: وضعیت حساب
       content += `
         <div class="card">
           <h2>📊 وضعیت حساب</h2>
           <div class="info-row">
             <span class="info-label">وضعیت رفرال:</span>
-            <span class="status ${
-              referralStatus === 'approved' ? 'active' :
-              referralStatus === 'pending' ? 'waiting' :
-              referralStatus === 'rejected' ? 'locked' :
-              'locked'
-            }">${
-              referralStatus === 'approved' ? '✅ تایید شده' :
-              referralStatus === 'pending' ? '⏳ در انتظار تایید' :
-              referralStatus === 'rejected' ? '❌ رد شده' :
-              '🔒 هنوز شروع نشده'
-            }</span>
+            <span class="status ${referralStatus === 'approved' ? 'active' : referralStatus === 'pending' ? 'waiting' : 'locked'}">
+              ${referralStatus === 'approved' ? '✅ تایید شده' : referralStatus === 'pending' ? '⏳ در انتظار تایید' : '🔒 هنوز شروع نشده'}
+            </span>
           </div>
           <div class="info-row">
             <span class="info-label">وضعیت ربات:</span>
-            <span class="status ${isActive ? 'active' : 'pending'}">${
-              isActive ? '✅ متصل' : '⏳ متصل نشده'
-            }</span>
+            <span class="status ${isActive ? 'active' : 'pending'}">${isActive ? '✅ متصل' : '⏳ متصل نشده'}</span>
           </div>
           <div class="info-row">
             <span class="info-label">تاریخ عضویت:</span>
@@ -262,136 +112,63 @@
         </div>
       `;
       
-      // بخش ۲: اگه هنوز رفرال تایید نشده
       if (referralStatus !== 'approved') {
         content += `
           <div class="card">
             <h2>🎁 فعال‌سازی ربات (رایگان)</h2>
-            
             <div class="referral-box">
               <h3><span class="step-number">۱</span> ثبت‌نام در TheTrueTrade</h3>
-              <p>
-                برای فعال‌سازی ربات، ابتدا باید از لینک زیر در TheTrueTrade ثبت‌نام کنی.
-              </p>
-              <a href="https://www.thetruetrade.io/r/747327" 
-                 target="_blank"
-                 class="btn btn-referral"
-                 onclick="onReferralClick()"
-                 ${referralClicked ? 'style="opacity:0.5;pointer-events:none"' : ''}>
+              <p>برای فعال‌سازی ربات، ابتدا باید از لینک زیر در TheTrueTrade ثبت‌نام کنی.</p>
+              <a href="https://www.thetruetrade.io/r/747327" target="_blank" class="btn btn-referral" onclick="onReferralClick()" ${referralClicked ? 'style="opacity:0.5;pointer-events:none"' : ''}>
                 ${referralClicked ? '✅ کلیک کردی' : '📝 ثبت‌نام در TTT'}
               </a>
             </div>
-        `;
-        
-        if (referralClicked && referralStatus === 'none') {
-          content += `
+            ${referralClicked && referralStatus === 'none' ? `
             <div class="referral-box" style="background: linear-gradient(135deg, #1e3a8a, #1e40af);">
               <h3><span class="step-number">۲</span> تایید ثبت‌نام</h3>
-              <p>
-                بعد از ثبت‌نام در TTT، روی دکمه زیر بزن.
-              </p>
-              <button 
-                class="btn btn-success"
-                onclick="confirmReferral()">
-                ✅ ثبت‌نام کردم
-              </button>
-            </div>
-          `;
-        }
-        
-        if (referralStatus === 'pending') {
-          content += `
+              <p>بعد از ثبت‌نام در TTT، روی دکمه زیر بزن.</p>
+              <button class="btn btn-success" onclick="confirmReferral()">✅ ثبت‌نام کردم</button>
+            </div>` : ''}
+            ${referralStatus === 'pending' ? `
             <div class="referral-box" style="background: linear-gradient(135deg, #1e3a8a, #1e40af);">
               <h3>⏳ در انتظار تایید</h3>
-              <p>
-                درخواستت ثبت شد. تیم ما تا ۲۴ ساعت آینده بررسی می‌کنه و تایید می‌کنه.
-              </p>
-            </div>
-          `;
-        }
-        
-        if (referralStatus === 'rejected') {
-          content += `
-            <div class="referral-box" style="background: linear-gradient(135deg, #7f1d1d, #991b1b);">
-              <h3>❌ درخواست رد شد</h3>
-              <p>
-                ثبت‌نام شما تایید نشد. لطفاً با پشتیبانی تماس بگیرید.
-              </p>
-            </div>
-          `;
-        }
-        
-        content += `</div>`;
+              <p>درخواستت ثبت شد. تیم ما تا ۲۴ ساعت آینده بررسی می‌کنه.</p>
+            </div>` : ''}
+          </div>
+        `;
       }
       
-      // بخش ۳: اگه رفرال تایید شده
       if (referralStatus === 'approved') {
         if (!isActive) {
           content += `
             <div class="card">
               <h2>🔑 اتصال به TheTrueTrade</h2>
-              <p style="color: #94a3b8; font-size: 14px; margin-bottom: 15px; line-height: 1.6;">
-                برای فعال‌سازی ربات، API Key و Secret صرافی خودت رو وارد کن.
-              </p>
-              <div class="form-group">
-                <label>API Key صرافی</label>
-                <input type="text" id="apiKey" placeholder="کلید API صرافی">
-              </div>
-              <div class="form-group">
-                <label>API Secret صرافی</label>
-                <input type="password" id="apiSecret" placeholder="API Secret">
-              </div>
-              <button class="btn" id="connectBtn" onclick="connectTTT()">
-                🔌 اتصال ربات
-              </button>
-              <p style="font-size: 12px; color: #64748b; margin-top: 15px; text-align: center;">
-                ⚠️ فقط دسترسی Readonly + Futures Trading کافیه. هرگز Withdrawal فعال نکن.
-              </p>
+              <p style="color: #94a3b8; font-size: 14px; margin-bottom: 15px;">برای فعال‌سازی ربات، API Key و Secret صرافی خودت رو وارد کن.</p>
+              <div class="form-group"><label>API Key صرافی</label><input type="text" id="apiKey" placeholder="کلید API صرافی"></div>
+              <div class="form-group"><label>API Secret صرافی</label><input type="password" id="apiSecret" placeholder="API Secret"></div>
+              <button class="btn" id="connectBtn" onclick="connectTTT()">🔌 اتصال ربات</button>
+              <p style="font-size: 12px; color: #64748b; margin-top: 15px; text-align: center;">⚠️ فقط دسترسی Readonly + Futures Trading کافیه. هرگز Withdrawal فعال نکن.</p>
             </div>
           `;
         } else {
           content += `
             <div class="card">
               <h2>✅ ربات شما متصل شد</h2>
-              <p class="success-message">
-                ربات RiskGuard با موفقیت به حساب TheTrueTrade شما متصل شد و از این به بعد به صورت شبانه‌روزی کار می‌کنه.
-              </p>
+              <p class="success-message">ربات RiskGuard با موفقیت به حساب شما متصل شد و ۲۴ ساعته کار می‌کنه.</p>
             </div>
           `;
         }
       }
       
-      // بخش ۴: تنظیمات (فقط اگه متصل)
       if (isActive && referralStatus === 'approved') {
         content += `
           <div class="card">
             <h2>⚙️ تنظیمات مدیریت سرمایه</h2>
-            
-            <div class="form-group">
-              <label>💰 حداکثر حد ضرر به دلار</label>
-              <input type="number" id="maxLoss" value="${config.max_loss_usd || 1}" step="0.5" min="0.5" max="10">
-            </div>
-            
-            <div class="form-group">
-              <label>🎯 حداکثر ریوارد (چند برابر ریسک)</label>
-              <input type="number" id="reward" value="${config.reward_ratio || 5}" step="0.5" min="1" max="20">
-            </div>
-            
-            <div class="form-group">
-              <label>🔒 وقتی سود به این مقدار رسید (چند برابر ریسک)</label>
-              <input type="number" id="trigger" value="${config.trigger_ratio || 2}" step="0.5" min="1" max="10">
-            </div>
-            
-            <div class="form-group">
-              <label>🛡 حد ضرر به این مقدار منتقل بشه (چند برابر ریسک)</label>
-              <input type="number" id="lock" value="${config.lock_profit_ratio || 1}" step="0.5" min="0.5" max="5">
-            </div>
-            
-            <div class="form-group">
-              <label>📊 حداکثر معاملات همزمان</label>
-              <input type="number" id="maxPos" value="${config.max_positions || 1}" step="1" min="1" max="5">
-            </div>
-            
+            <div class="form-group"><label>💰 حداکثر حد ضرر به دلار</label><input type="number" id="maxLoss" value="${config.max_loss_usd || 1}" step="0.5" min="0.5" max="10"></div>
+            <div class="form-group"><label>🎯 حداکثر ریوارد</label><input type="number" id="reward" value="${config.reward_ratio || 5}" step="0.5" min="1" max="20"></div>
+            <div class="form-group"><label>🔒 آستانه قفل سود</label><input type="number" id="trigger" value="${config.trigger_ratio || 2}" step="0.5" min="1" max="10"></div>
+            <div class="form-group"><label>🛡 قفل سود روی</label><input type="number" id="lock" value="${config.lock_profit_ratio || 1}" step="0.5" min="0.5" max="5"></div>
+            <div class="form-group"><label>📊 حداکثر معاملات همزمان</label><input type="number" id="maxPos" value="${config.max_positions || 1}" step="1" min="1" max="5"></div>
             <button class="btn" id="saveBtn" onclick="saveConfig()">💾 ذخیره تنظیمات</button>
           </div>
         `;
@@ -401,36 +178,18 @@
     }
 
     async function onReferralClick() {
-      try {
-        await fetch('/api/user/referral-click', { method: 'POST' });
-      } catch (err) {
-        console.error('Referral click error:', err);
-      }
-      
+      try { await fetch('/api/user/referral-click', { method: 'POST' }); } catch (err) {}
       setTimeout(() => window.location.reload(), 2000);
     }
 
     async function confirmReferral() {
-      if (!confirm('آیا مطمئنی که در TheTrueTrade از لینک ما ثبت‌نام کردی؟')) {
-        return;
-      }
-      
+      if (!confirm('آیا مطمئنی که در TheTrueTrade از لینک ما ثبت‌نام کردی؟')) return;
       try {
-        const resp = await fetch('/api/user/referral-confirm', {
-          method: 'POST',
-        });
-        
+        const resp = await fetch('/api/user/referral-confirm', { method: 'POST' });
         const data = await resp.json();
-        
-        if (data.ok) {
-          showToast('✅ درخواست تایید ثبت شد. تا ۲۴ ساعت بررسی می‌شه.');
-          setTimeout(() => window.location.reload(), 2000);
-        } else {
-          showToast('❌ ' + (data.error || 'خطا'), true);
-        }
-      } catch (err) {
-        showToast('❌ خطا در اتصال', true);
-      }
+        if (data.ok) { showToast('✅ درخواست تایید ثبت شد.'); setTimeout(() => window.location.reload(), 2000); } 
+        else { showToast('❌ ' + (data.error || 'خطا'), true); }
+      } catch (err) { showToast('❌ خطا در اتصال', true); }
     }
 
     async function saveConfig() {
@@ -441,64 +200,39 @@
         lock_profit_ratio: parseFloat(document.getElementById('lock').value),
         max_positions: parseInt(document.getElementById('maxPos').value),
       };
-      
       const btn = document.getElementById('saveBtn');
-      btn.disabled = true;
-      btn.textContent = '⏳ در حال ذخیره...';
-      
+      btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
       try {
         const resp = await fetch('/api/user/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(config),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config),
         });
-        
         const data = await resp.json();
-        
-        if (data.ok) {
-          showToast('✅ تنظیمات ذخیره شد');
-        } else {
-          showToast('❌ ' + (data.error || 'خطا'), true);
-        }
-      } catch (err) {
-        showToast('❌ خطا در اتصال', true);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '💾 ذخیره تنظیمات';
-      }
+        if (data.ok) { showToast('✅ تنظیمات ذخیره شد'); } 
+        else { showToast('❌ ' + (data.error || 'خطا'), true); }
+      } catch (err) { showToast('❌ خطا در اتصال', true); } 
+      finally { btn.disabled = false; btn.textContent = '💾 ذخیره تنظیمات'; }
     }
 
-    // تابع اتصال (نسخه پایدار)
     async function connectTTT() {
       const apiKey = document.getElementById('apiKey').value.trim();
       const apiSecret = document.getElementById('apiSecret').value.trim();
-      
-      if (!apiKey || !apiSecret) {
-        showToast('❌ API Key و Secret الزامی هستن', true);
-        return;
-      }
+      if (!apiKey || !apiSecret) { showToast('❌ API Key و Secret الزامی هستن', true); return; }
       
       const btn = document.getElementById('connectBtn');
       btn.disabled = true;
-      btn.textContent = '⏳ در حال اتصال... (۲۰ ثانیه)';
+      btn.textContent = '⏳ در حال اتصال... (۱۵ ثانیه)';
       
       try {
         const resp = await fetch('/api/setup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            api_key: apiKey,
-            api_secret: apiSecret,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret }),
         });
-        
         const data = await resp.json();
         
         if (data.ok) {
           showToast('✅ ربات با موفقیت متصل شد!');
           document.getElementById('apiKey').value = '';
           document.getElementById('apiSecret').value = '';
-          
           setTimeout(() => window.location.reload(), 3000);
         } else {
           showToast('❌ ' + (data.error || 'خطا در اتصال'), true);
@@ -515,10 +249,7 @@
       const toast = document.getElementById('toast');
       toast.textContent = msg;
       toast.className = 'toast show' + (isError ? ' error' : '');
-      
-      setTimeout(() => {
-        toast.className = 'toast';
-      }, 5000);
+      setTimeout(() => { toast.className = 'toast'; }, 5000);
     }
 
     function logout() {
