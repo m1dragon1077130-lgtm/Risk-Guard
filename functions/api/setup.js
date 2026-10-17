@@ -27,7 +27,7 @@ export async function onRequest(context) {
     let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
     
     if (checkRes.status === 404) {
-      // Fork کن (با اجبار اسم riskguard)
+      // Fork کن
       const forkRes = await ghFetch(
         `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
         ghToken,
@@ -39,11 +39,10 @@ export async function onRequest(context) {
         return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
       }
       
-      // ۱۵ ثانیه صبر میکنیم تا گیت‌هاب فایل‌ها رو کپی کنه
       await new Promise(r => setTimeout(r, 15000));
     }
     
-    // ۲. آپدیت config.json
+    // ۲. ساخت/آپدیت فایل config.json
     let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
     
     if (!configRes.ok) {
@@ -81,14 +80,64 @@ export async function onRequest(context) {
       return json({ error: 'Config update failed: ' + await updateConfigRes.text() }, 500);
     }
     
-    // ۳. فعال‌سازی Actions
+    // ۳. ساخت/آپدیت فایل workflow (این بخش جدیده)
+    const workflowContent = `name: RiskGuard
+
+on:
+  schedule:
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: riskguard-\${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Run RiskGuard
+        run: python riskguard.py
+`;
+    
+    // چک کن فایل workflow هست؟
+    let wfRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken);
+    let wfSha = null;
+    
+    if (wfRes.ok) {
+      const wfData = await wfRes.json();
+      wfSha = wfData.sha;
+    } else {
+        // اگه پوشه‌ی .github/workflows وجود نداشت، خودش میسازد
+    }
+    
+    const wfB64 = btoa(unescape(encodeURIComponent(workflowContent)));
+    const updateWfBody = { message: 'Add/Update workflow', content: wfB64 };
+    if (wfSha) updateWfBody.sha = wfSha;
+    
+    const updateWfRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken, 'PUT', updateWfBody);
+    
+    if (!updateWfRes.ok) {
+        // اگه خطا داد، شاید نیاز به ساختن پوشه داشته باشه
+        console.error('Workflow update failed:', await updateWfRes.text());
+    }
+
+    // ۴. فعال‌سازی Actions
     await ghFetch(`https://api.github.com/repos/${repo}/actions/permissions`, ghToken, 'PUT', { enabled: true, allowed_actions: 'all' });
     
-    // ۴. Trigger کردن Workflow (با اسم دقیق فایل riskguard.yml)
+    // ۵. Trigger کردن Workflow
     await new Promise(r => setTimeout(r, 3000));
     await ghFetch(`https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`, ghToken, 'POST', { ref: 'main' });
     
-    // ۵. آپدیت Supabase
+    // ۶. آپدیت Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(`${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`, {
         method: 'PATCH',
