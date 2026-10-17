@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -477,6 +477,9 @@
       }
     }
 
+    // ============================================================
+    // تابع دو مرحله‌ای: Fork (مرحله ۱) + اتصال (مرحله ۲)
+    // ============================================================
     async function connectTTT() {
       const apiKey = document.getElementById('apiKey').value.trim();
       const apiSecret = document.getElementById('apiSecret').value.trim();
@@ -488,9 +491,34 @@
       
       const btn = document.getElementById('connectBtn');
       btn.disabled = true;
-      btn.textContent = '⏳ در حال اتصال... (۱۵ ثانیه)';
+      btn.textContent = '⏳ در حال بررسی مخزن...';
       
       try {
+        // مرحله ۱: Fork (اگه لازم باشه)
+        const forkResp = await fetch('/api/setup/fork', {
+          method: 'POST',
+        });
+        
+        const forkData = await forkResp.json();
+        
+        if (!forkData.ok) {
+          showToast('❌ ' + (forkData.error || 'خطا در Fork'), true);
+          btn.disabled = false;
+          btn.textContent = '🔌 اتصال ربات';
+          return;
+        }
+        
+        // اگه Fork جدید انجام شد، ۳۰ ثانیه صبر کن
+        if (forkData.pending) {
+          for (let i = 30; i > 0; i--) {
+            btn.textContent = `⏳ Fork انجام شد. ${i} ثانیه صبر...`;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+        
+        // مرحله ۲: بقیه (config + Actions)
+        btn.textContent = '⏳ در حال اتصال ربات...';
+        
         const resp = await fetch('/api/setup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
