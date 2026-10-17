@@ -23,32 +23,22 @@ export async function onRequest(context) {
   const repo = `${username}/riskguard`;
   
   try {
-    // ۱. چک: مخزن riskguard وجود داره؟
+    // فقط چک میکنیم مخزن ساخته شده یا نه. دیگه Fork نمیکنیم!
     let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
     
     if (checkRes.status === 404) {
-      // Fork کن
-      const forkRes = await ghFetch(
-        `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
-        ghToken,
-        'POST',
-        { name: "riskguard" }
-      );
-      
-      if (!forkRes.ok && forkRes.status !== 202) {
-        return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
-      }
-      
-      await new Promise(r => setTimeout(r, 15000));
+      return json({ 
+        error: 'mخزن شما ساخته نشده است. لطفا روی دکمه "ساخت مخزن در گیت‌هاب" کلیک کنید و بعد از ساخت، دوباره امتحان کنید.',
+        need_fork: true
+      }, 400);
     }
     
-    // ۲. آپدیت/ساخت config.json (ضد گلوله)
+    // آپدیت/ساخت config.json
     let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
     
     let sha = null;
     let currentConfig = {};
     
-    // اگر فایل وجود داشت، محتوا و SHA اون رو می‌گیریم
     if (configRes.ok) {
       const configData = await configRes.json();
       sha = configData.sha;
@@ -76,7 +66,7 @@ export async function onRequest(context) {
       return json({ error: 'Config update failed: ' + await updateConfigRes.text() }, 500);
     }
 
-    // ۳. آپدیت/ساخت فایل Workflow (برای اینکه اکشن‌ها همیشه کار کنن)
+    // آپدیت فایل Workflow
     const workflowContent = `name: RiskGuard
 
 on:
@@ -118,14 +108,12 @@ jobs:
     
     await ghFetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/riskguard.yml`, ghToken, 'PUT', updateWfBody);
     
-    // ۴. فعال‌سازی Actions
+    // فعال‌سازی Actions و Trigger
     await ghFetch(`https://api.github.com/repos/${repo}/actions/permissions`, ghToken, 'PUT', { enabled: true, allowed_actions: 'all' });
-    
-    // ۵. Trigger کردن Workflow
     await new Promise(r => setTimeout(r, 3000));
     await ghFetch(`https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`, ghToken, 'POST', { ref: 'main' });
     
-    // ۶. آپدیت Supabase
+    // آپدیت Supabase
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
       await fetch(`${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`, {
         method: 'PATCH',
@@ -134,10 +122,7 @@ jobs:
             'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`, 
             'Content-Type': 'application/json' 
         },
-        body: JSON.stringify({ 
-            is_active: true, 
-            has_paid: true 
-        }),
+        body: JSON.stringify({ is_active: true, has_paid: true }),
       });
     }
     
