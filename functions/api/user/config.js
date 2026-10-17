@@ -32,7 +32,6 @@ export async function onRequest(context) {
     max_positions: parseInt(body.max_positions) || 1,
   };
   
-  // اعتبارسنجی
   if (config.max_loss_usd < 0.5 || config.max_loss_usd > 10) {
     return json({ error: 'حداکثر ضرر باید بین 0.5 و 10 باشه' }, 400);
   }
@@ -48,6 +47,10 @@ export async function onRequest(context) {
   if (config.max_positions < 1 || config.max_positions > 5) {
     return json({ error: 'حداکثر معاملات باید بین 1 و 5 باشه' }, 400);
   }
+  
+  const ghToken = sessionData.gh_token;
+  const username = sessionData.username;
+  const repo = `${username}/riskguard`;
   
   try {
     // ۱. ذخیره در Supabase
@@ -69,18 +72,12 @@ export async function onRequest(context) {
     );
     
     if (!sbRes.ok) {
-      const errText = await sbRes.text();
-      return json({ error: 'DB error: ' + errText }, 500);
+      return json({ error: 'DB error: ' + await sbRes.text() }, 500);
     }
     
     // ۲. آپدیت config.json توی مخزن GitHub کاربر
-    const ghToken = sessionData.gh_token;
-    const username = sessionData.username;
-    const repo = `${username}/riskguard`;
-    
     if (ghToken && username) {
       try {
-        // SHA فایل فعلی
         const configFileRes = await fetch(
           `https://api.github.com/repos/${repo}/contents/config.json`,
           {
@@ -96,15 +93,13 @@ export async function onRequest(context) {
           const configData = await configFileRes.json();
           const sha = configData.sha;
           
-          // محتوای جدید (با حفظ API Key)
           let existingConfig = {};
           try {
             const decoded = decodeURIComponent(escape(atob(configData.content)));
             existingConfig = JSON.parse(decoded);
-          } catch (e) {
-            console.error('Parse existing config error:', e);
-          }
+          } catch (e) {}
           
+          // مقادیر قدیمی (مثل API Key) رو نگه‌میداریم
           const newConfig = {
             ...existingConfig,
             max_loss_usd: config.max_loss_usd,
@@ -117,7 +112,6 @@ export async function onRequest(context) {
           const configStr = JSON.stringify(newConfig, null, 2);
           const contentB64 = btoa(unescape(encodeURIComponent(configStr)));
           
-          // آپدیت فایل
           const updateRes = await fetch(
             `https://api.github.com/repos/${repo}/contents/config.json`,
             {
@@ -139,35 +133,12 @@ export async function onRequest(context) {
           if (!updateRes.ok) {
             console.error('GitHub config update failed:', await updateRes.text());
           }
-        }
-      } catch (ghErr) {
-        console.error('GitHub update error:', ghErr);
-      }
-      
-      // ۳. Cancel کردن همه‌ی Workflowهای در حال اجرا
-      try {
-        const runsRes = await fetch(
-          `https://api.github.com/repos/${repo}/actions/runs?status=in_progress&per_page=20`,
-          {
-            headers: {
-              'Authorization': `token ${ghToken}`,
-              'Accept': 'application/vnd.github.v3+json',
-              'User-Agent': 'RiskGuard',
-            },
-          }
-        );
-        
-        if (runsRes.ok) {
-          const runsData = await runsRes.json();
-          const runs = runsData.workflow_runs || [];
           
-          console.log(`Found ${runs.length} in-progress workflows. Canceling...`);
-          
-          for (const run of runs) {
-            await fetch(
-              `https://api.github.com/repos/${repo}/actions/runs/${run.id}/cancel`,
+          // ۳. همه‌ی Workflowهای در حال اجرا رو Cancel کن، بعد Trigger کن
+          try {
+            const runsRes = await fetch(
+              `https://api.github.com/repos/${repo}/actions/runs?status=in_progress&per_page=20`,
               {
-                method: 'POST',
                 headers: {
                   'Authorization': `token ${ghToken}`,
                   'Accept': 'application/vnd.github.v3+json',
@@ -175,35 +146,45 @@ export async function onRequest(context) {
                 },
               }
             );
-            console.log(`Canceled run #${run.id}`);
+            
+            if (runsRes.ok) {
+              const runsData = await runsRes.json();
+              for (const run of runsData.workflow_runs || []) {
+                await fetch(
+                  `https://api.github.com/repos/${repo}/actions/runs/${run.id}/cancel`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `token ${ghToken}`,
+                      'Accept': 'application/vnd.github.v3+json',
+                      'User-Agent': 'RiskGuard',
+                    },
+                  }
+                );
+              }
+            }
+            
+            await new Promise(r => setTimeout(r, 5000));
+            
+            await fetch(
+              `https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `token ${ghToken}`,
+                  'Accept': 'application/vnd.github.v3+json',
+                  'User-Agent': 'RiskGuard',
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ ref: 'main' }),
+              }
+            );
+          } catch (cancelErr) {
+            console.error('Cancel/Trigger error:', cancelErr);
           }
         }
-        
-        // ۵ ثانیه صبر کن تا Cancel کامل بشه
-        await new Promise(r => setTimeout(r, 5000));
-        
-      } catch (cancelErr) {
-        console.error('Cancel error:', cancelErr);
-      }
-      
-      // ۴. Trigger کردن Workflow جدید
-      try {
-        await fetch(
-          `https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `token ${ghToken}`,
-              'Accept': 'application/vnd.github.v3+json',
-              'User-Agent': 'RiskGuard',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ ref: 'main' }),
-          }
-        );
-        console.log('Triggered new workflow');
-      } catch (triggerErr) {
-        console.error('Trigger error:', triggerErr);
+      } catch (ghErr) {
+        console.error('GitHub update error:', ghErr);
       }
     }
     
@@ -219,4 +200,4 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
+              }
