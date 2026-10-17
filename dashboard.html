@@ -330,7 +330,7 @@
             <div class="card">
               <h2>🔑 اتصال به TheTrueTrade</h2>
               <p style="color: #94a3b8; font-size: 14px; margin-bottom: 15px; line-height: 1.6;">
-                برای فعال‌سازی ربات، API Key و Secret صرافی خودت رو وارد کن.
+                برای فعال‌سازی ربات، API Key و Secret صرافی خودت رو وارد کن و دکمه زیر رو بزن. (کل فرآیند به صورت خودکار انجام می‌شود و نیازی به کار دیگری نیست)
               </p>
               <div class="form-group">
                 <label>API Key صرافی</label>
@@ -467,6 +467,9 @@
       }
     }
 
+    // ============================================================
+    // تابع هوشمند و خودکار برای اتصال (بدون Timeout)
+    // ============================================================
     async function connectTTT() {
       const apiKey = document.getElementById('apiKey').value.trim();
       const apiSecret = document.getElementById('apiSecret').value.trim();
@@ -478,32 +481,53 @@
       
       const btn = document.getElementById('connectBtn');
       btn.disabled = true;
-      btn.textContent = '⏳ در حال اتصال... (۲۰ ثانیه)';
       
       try {
-        const resp = await fetch('/api/setup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            api_key: apiKey,
-            api_secret: apiSecret,
-          }),
-        });
+        let currentStep = 'fork';
+        let isDone = false;
         
-        const data = await resp.json();
-        
-        if (data.ok) {
-          showToast('✅ ربات با موفقیت متصل شد!');
-          document.getElementById('apiKey').value = '';
-          document.getElementById('apiSecret').value = '';
+        while (!isDone) {
+          if (currentStep === 'fork') btn.textContent = '⏳ در حال ساخت مخزن گیت‌هاب...';
+          if (currentStep === 'fork_pending') btn.textContent = '⏳ در انتظار ساخت مخزن (صبر کنید)...';
+          if (currentStep === 'config') btn.textContent = '⏳ در حال ذخیره تنظیمات...';
+          if (currentStep === 'actions') btn.textContent = '⏳ در حال استارت ربات...';
+
+          const resp = await fetch('/api/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                api_key: apiKey, 
+                api_secret: apiSecret, 
+                step: currentStep 
+            }),
+          });
           
-          setTimeout(() => window.location.reload(), 3000);
-        } else {
-          showToast('❌ ' + (data.error || 'خطا در اتصال'), true);
+          const data = await resp.json();
+          
+          if (data.error) {
+            showToast('❌ ' + data.error, true);
+            btn.disabled = false;
+            btn.textContent = '🔌 اتصال ربات';
+            return;
+          }
+          
+          if (data.done) {
+            isDone = true;
+            showToast('✅ ربات با موفقیت متصل شد!');
+            document.getElementById('apiKey').value = '';
+            document.getElementById('apiSecret').value = '';
+            setTimeout(() => window.location.reload(), 2000);
+            break;
+          }
+          
+          if (data.next_step) {
+            currentStep = data.next_step;
+            // ۳ ثانیه صبر بین هر مرحله (تا گیت‌هاب و کلودفلر نفس بکشن)
+            await new Promise(r => setTimeout(r, 3000)); 
+          }
         }
       } catch (err) {
         showToast('❌ خطا در ارتباط با سرور', true);
-      } finally {
         btn.disabled = false;
         btn.textContent = '🔌 اتصال ربات';
       }
