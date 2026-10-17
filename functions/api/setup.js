@@ -15,7 +15,7 @@ export async function onRequest(context) {
   let body;
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
   
-  const { api_key, api_secret } = body;
+  const { api_key, api_secret, step } = body;
   if (!api_key || !api_secret) return json({ error: 'API Key و Secret الزامی هستن' }, 400);
   
   const ghToken = sessionData.gh_token;
@@ -23,80 +23,98 @@ export async function onRequest(context) {
   const repo = `${username}/riskguard`;
   
   try {
-    // ۱. چک: مخزن riskguard وجود داره؟
-    let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
-    
-    if (checkRes.status === 404) {
-      // Fork کن
+    // ========================================================
+    // مرحله ۱: ساخت مخزن (Fork)
+    // ========================================================
+    if (step === 'fork') {
+      let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
+      if (checkRes.status === 200) return json({ ok: true, next_step: 'config' });
+      
       const forkRes = await ghFetch(
         `https://api.github.com/repos/m1dragon1077130-lgtm/riskguard-template/forks`,
-        ghToken,
-        'POST',
-        { name: "riskguard" }
+        ghToken, 'POST', { name: "riskguard" }
       );
       
       if (!forkRes.ok && forkRes.status !== 202) {
         return json({ error: 'Fork failed: ' + await forkRes.text() }, 500);
       }
       
-      // صبر ۱۵ ثانیه‌ای
-      await new Promise(r => setTimeout(r, 15000));
+      // درجا برمی‌گردیم! کاربر/جاوااسکریپت ۳ ثانیه دیگه دوباره چک میکنه
+      return json({ ok: true, next_step: 'fork_pending', message: 'در حال ساخت مخزن...' });
     }
     
-    // ۲. آپدیت config.json
-    let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
-    
-    if (!configRes.ok) {
-      await new Promise(r => setTimeout(r, 5000));
-      configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
+    // ========================================================
+    // مرحله ۲: چک کردن ساخته شدن مخزن
+    // ========================================================
+    if (step === 'fork_pending') {
+      let checkRes = await ghFetch(`https://api.github.com/repos/${repo}`, ghToken);
+      if (checkRes.status === 200) {
+        return json({ ok: true, next_step: 'config' }); // مخزن ساخته شد!
+      }
+      return json({ ok: true, next_step: 'fork_pending' }); // هنوز ساخته نشده
     }
     
-    let sha = null;
-    let currentConfig = {};
-    
-    if (configRes.ok) {
-      const configData = await configRes.json();
-      sha = configData.sha;
-      try {
-        const decoded = decodeURIComponent(escape(atob(configData.content)));
-        currentConfig = JSON.parse(decoded);
-      } catch (e) {}
+    // ========================================================
+    // مرحله ۳: آپدیت فایل config.json
+    // ========================================================
+    if (step === 'config') {
+      let configRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken);
+      
+      let sha = null;
+      let currentConfig = {};
+      
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        sha = configData.sha;
+        try {
+          const decoded = decodeURIComponent(escape(atob(configData.content)));
+          currentConfig = JSON.parse(decoded);
+        } catch (e) {}
+      }
+      
+      const newConfig = { ...currentConfig, tt_api_key: api_key, tt_api_secret: api_secret };
+      const configStr = JSON.stringify(newConfig, null, 2);
+      const configB64 = btoa(unescape(encodeURIComponent(configStr)));
+      
+      const updateConfigBody = { message: 'Update config with API keys', content: configB64 };
+      if (sha) updateConfigBody.sha = sha;
+      
+      const updateConfigRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken, 'PUT', updateConfigBody);
+      
+      if (!updateConfigRes.ok) {
+        // اگه فایل هنوز آماده نبود، ۳ ثانیه صبر میکنیم و دوباره تلاش
+        return json({ ok: true, next_step: 'config' }); 
+      }
+      
+      return json({ ok: true, next_step: 'actions' });
     }
     
-    const newConfig = {
-      ...currentConfig,
-      tt_api_key: api_key,
-      tt_api_secret: api_secret,
-    };
-    
-    const configStr = JSON.stringify(newConfig, null, 2);
-    const configB64 = btoa(unescape(encodeURIComponent(configStr)));
-    
-    const updateConfigBody = { message: 'Update config with API keys', content: configB64 };
-    if (sha) updateConfigBody.sha = sha;
-    
-    const updateConfigRes = await ghFetch(`https://api.github.com/repos/${repo}/contents/config.json`, ghToken, 'PUT', updateConfigBody);
-    
-    if (!updateConfigRes.ok) {
-      return json({ error: 'Config update failed: ' + await updateConfigRes.text() }, 500);
+    // ========================================================
+    // مرحله ۴: فعال‌سازی Actions و Trigger
+    // ========================================================
+    if (step === 'actions') {
+      await ghFetch(`https://api.github.com/repos/${repo}/actions/permissions`, ghToken, 'PUT', { enabled: true, allowed_actions: 'all' });
+      
+      await new Promise(r => setTimeout(r, 2000)); // ۲ ثانیه صبر برای فعال شدن permissions
+      
+      const triggerRes = await ghFetch(`https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`, ghToken, 'POST', { ref: 'main' });
+      
+      if (!triggerRes.ok && triggerRes.status !== 204) {
+          return json({ ok: true, next_step: 'actions' }); // شاید ورک‌فلو تازه ساخته شده، دوباره تلاش کن
+      }
+
+      // آپدیت نهایی در دیتابیس
+      if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
+        await fetch(`${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: true, has_paid: true }),
+        });
+      }
+      
+      return json({ ok: true, done: true, message: 'ربات با موفقیت متصل شد!' });
     }
-    
-    // ۳. فعال‌سازی Actions و Trigger
-    await ghFetch(`https://api.github.com/repos/${repo}/actions/permissions`, ghToken, 'PUT', { enabled: true, allowed_actions: 'all' });
-    await new Promise(r => setTimeout(r, 3000));
-    await ghFetch(`https://api.github.com/repos/${repo}/actions/workflows/riskguard.yml/dispatches`, ghToken, 'POST', { ref: 'main' });
-    
-    // ۴. آپدیت Supabase
-    if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
-      await fetch(`${env.SUPABASE_URL}/rest/v1/users?github_id=eq.${sessionData.github_id}`, {
-        method: 'PATCH',
-        headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: true, has_paid: true }),
-      });
-    }
-    
-    return json({ ok: true, message: 'ربات فعال شد!' });
-    
+
   } catch (err) {
     return json({ error: err.message }, 500);
   }
@@ -123,4 +141,4 @@ function json(data, status = 200) {
     status, 
     headers: { 'Content-Type': 'application/json' } 
   }); 
-}
+              }
